@@ -392,3 +392,52 @@ export function funil(pontos, p0, limite, o = {}) {
   if (o.tituloX) s += `<text x="${((margemEsq + W) / 2).toFixed(1)}" y="${H - 6}" font-size="${tam - 1}" fill="${COR.TINTA_SUAVE}" text-anchor="middle">${esc(o.tituloX)}</text>`;
   return s + "</svg>";
 }
+
+// ---------------------------------------------------------------------------
+// pontos com IC95% (faixa etária): uma linha por grupo, até 2 séries
+// grupos: [{ rotulo, valores: [{ v, inf, sup, dica } | null por série] }]
+// series: [{ rotulo, cor }]
+// ---------------------------------------------------------------------------
+export function pontosIC(grupos, series, o = {}) {
+  const tam = o.fonte || 12;
+  const W = o.largura || 600;
+  const passo = 40;
+  const topo = series.length > 1 ? tam + 18 : 8;
+  const maxRot = Math.max(...grupos.map((g) => larguraTexto(g.rotulo, tam)), 20);
+  const margemEsq = Math.min(W * 0.4, maxRot + 14), margemDir = 16;
+  const plotBot = topo + grupos.length * passo;
+  const H = plotBot + 36 + (o.tituloX ? tam + 4 : 0);
+  const vmax = Math.max(10, ...grupos.flatMap((g) => g.valores.filter(Boolean).map((x) => x.sup ?? x.v)));
+  const xmax = Math.min(100, vmax * 1.08);
+  const X = (v) => margemEsq + (Math.min(v, xmax) / xmax) * (W - margemEsq - margemDir);
+  let s = cabecalhoSvg(W, H, o.fundo);
+  if (series.length > 1) {
+    let cx = 0;
+    for (const se of series) {
+      s += `<line x1="${cx}" y1="${tam - 2}" x2="${cx + 14}" y2="${tam - 2}" stroke="${se.cor}" stroke-width="2"/><circle cx="${cx + 7}" cy="${tam - 2}" r="4" fill="${se.cor}"/>`;
+      s += `<text x="${cx + 20}" y="${tam + 2}" font-size="${tam - 1}" fill="${COR.TINTA_SUAVE}">${esc(se.rotulo)}</text>`;
+      cx += 20 + larguraTexto(se.rotulo, tam - 1) + 18;
+    }
+  }
+  for (const t of ticks(xmax)) {
+    if (t > xmax + 1e-9) continue;
+    s += `<line x1="${X(t).toFixed(1)}" y1="${topo}" x2="${X(t).toFixed(1)}" y2="${plotBot}" stroke="${COR.GRADE}" stroke-width="1"/>`;
+    s += `<text x="${X(t).toFixed(1)}" y="${plotBot + tam + 4}" font-size="${tam - 1}" fill="${COR.TINTA_SUAVE}" text-anchor="middle">${fmt(t)}</text>`;
+  }
+  s += `<line x1="${margemEsq}" y1="${plotBot}" x2="${W - margemDir}" y2="${plotBot}" stroke="${COR.LINHA}" stroke-width="1"/>`;
+  grupos.forEach((g, i) => {
+    const yc = topo + i * passo + passo / 2;
+    s += `<text x="${margemEsq - 10}" y="${(yc + tam * 0.35).toFixed(1)}" font-size="${tam}" fill="${COR.TINTA}" text-anchor="end">${esc(g.rotulo)}</text>`;
+    g.valores.forEach((x, k) => {
+      if (!x) return;
+      const y = yc + (series.length > 1 ? (k === 0 ? -6 : 6) : 0);
+      const cor = series[k].cor;
+      s += `<g class="pj-marca"${dicaAttr(x.dica)}>`;
+      if (x.inf !== null && x.inf !== undefined) s += `<line x1="${X(x.inf).toFixed(1)}" y1="${y}" x2="${X(x.sup).toFixed(1)}" y2="${y}" stroke="${cor}" stroke-width="2" stroke-linecap="round" opacity="0.55"/>`;
+      s += `<circle cx="${X(x.v).toFixed(1)}" cy="${y}" r="4.5" fill="${cor}" stroke="${o.fundo || COR.SUPERFICIE}" stroke-width="2"/>`;
+      s += `<rect x="${margemEsq}" y="${(y - 6).toFixed(1)}" width="${W - margemEsq - margemDir}" height="12" fill="transparent"/></g>`;
+    });
+  });
+  if (o.tituloX) s += `<text x="${((margemEsq + W) / 2).toFixed(1)}" y="${H - 6}" font-size="${tam - 1}" fill="${COR.TINTA_SUAVE}" text-anchor="middle">${esc(o.tituloX)}</text>`;
+  return s + "</svg>";
+}

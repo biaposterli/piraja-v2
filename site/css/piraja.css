@@ -169,7 +169,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .pj-editor tr.fora td:not(:first-child) { opacity: .55; }
 .pj-campo { display: flex; flex-direction: column; gap: 5px; margin: 8px 0 12px; font-size: 14px; }
 .pj-campo > span { font-weight: 600; color: var(--tinta-suave); font-size: 13.5px; }
-.pj-campo input[type="number"], .pj-campo select { border: 1px solid var(--linha); border-radius: 8px; padding: 7px 10px; background: #fff; max-width: 320px; }
+.pj-campo input[type="number"], .pj-campo input[type="text"], .pj-campo select { border: 1px solid var(--linha); border-radius: 8px; padding: 7px 10px; background: #fff; max-width: 320px; }
 .pj-check { display: flex; gap: 9px; align-items: flex-start; margin: 10px 0; cursor: pointer; font-size: 14px; }
 .pj-check input { width: 17px; height: 17px; accent-color: var(--mata); margin-top: 2px; flex: 0 0 auto; }
 .pj-pendente { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 16px; }

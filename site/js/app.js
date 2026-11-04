@@ -4,6 +4,7 @@
 import { esc, sortedStr, normText } from "./util.js";
 import { TODAS, criteriosAtivos, coletasDuplicadas, coletasNaoReconhecidas, REQUIRED_COLUMNS, CATEGORIAS_VALIDAS, categoriaDe } from "./engine.js";
 import { sugerirEspecie, ehEspeciePadrao } from "./sugestoes.js";
+import { COLUNAS_IDADE, PRESETS, lerIdades, presetAutomatico, lerCortes, lerConfigIdade, faixas, nomesDoPreset } from "./idade.js";
 import { AMOSTRAS_VALIDAS, atualizarContagens, construirConfig } from "./config.js";
 import { lerPlanilha } from "./tabela.js";
 import { prepararPlanilha, estadoInicialConfig, analisar } from "./pipeline.js";
@@ -15,10 +16,11 @@ const PAPEL = "#F4F1EA";
 
 // colunas da planilha que nunca são método (não aparecem como opção no passo 03)
 const COLUNAS_NAO_METODO = new Set([...REQUIRED_COLUMNS, "nome_crianca", "nome_responsavel", "status_amostra",
-  "status_lamina", "observacoes", "observacao", "bairro", "municipio", "uf"]);
+  "status_lamina", "observacoes", "observacao", "bairro", "municipio", "uf", ...COLUNAS_IDADE]);
 
 const S = {
   arquivo: null, planilha: null, df: null, cfgPlanilha: null,
+  idades: null, // idade de cada paciente (lerIdades), quando a planilha tem idade
   cfg: null, // configuração aplicada: { par, met, n, max, crit, avisos, origem }
   rascunho: null, // edições ainda não aplicadas
   pendente: false,
@@ -168,12 +170,12 @@ async function aoClicar(e) {
   } else if (acao === "baixar-config") {
     await comBotao(el, async () => {
       const { configXlsx } = await import("./planilhas.js");
-      baixar(await configXlsx(S.cfg.par, S.cfg.met, S.cfg.n, S.cfg.crit), `Configuracao_${baseNome()}.xlsx`, XLSX_MIME);
+      baixar(await configXlsx(S.cfg.par, S.cfg.met, S.cfg.n, S.cfg.crit, S.cfg.idade?.cortes), `Configuracao_${baseNome()}.xlsx`, XLSX_MIME);
     });
   } else if (acao === "baixar-planilha-config") {
     await comBotao(el, async () => {
       const { planilhaComConfig } = await import("./planilhas.js");
-      const b = await planilhaComConfig(S.arquivo.buffer, S.arquivo.nome, S.planilha, S.cfg.par, S.cfg.met, S.cfg.n, S.cfg.crit);
+      const b = await planilhaComConfig(S.arquivo.buffer, S.arquivo.nome, S.planilha, S.cfg.par, S.cfg.met, S.cfg.n, S.cfg.crit, S.cfg.idade?.cortes);
       baixar(b, `${baseNome()}_com_configuracao.xlsx`, XLSX_MIME);
     });
   } else if (acao === "baixar-excel") {
@@ -197,6 +199,13 @@ function fecharMenu() {
 
 function aoMudar(e) {
   const t = e.target;
+  if (t.dataset.campo === "idade_preset" || t.dataset.campo === "idade_cortes") {
+    lerRascunhoDoDom();
+    if (t.dataset.campo === "idade_preset" && t.value) S.rascunho.idade.texto = PRESETS.find((p) => p.id === t.value).cortes.join(", ");
+    marcarPendente();
+    renderConfig();
+    return;
+  }
   if (t.closest("#passo-3") && t.dataset.campo) { lerRascunhoDoDom(); marcarPendente(); }
   if (t.closest("#passo-3") && t.dataset.campo === "Incluir") t.closest("tr")?.classList.toggle("fora", !t.checked);
   if (t.id === "mapa-on") alternarMapa(t.checked);
@@ -237,6 +246,11 @@ async function carregarArquivo(file) {
     S.df = prep.df;
     S.cfgPlanilha = prep.cfgPlanilha;
     S.cfg = estadoInicialConfig(prep.df, prep.cfgPlanilha);
+    S.idades = lerIdades(prep.df);
+    if (S.idades) {
+      const daPlanilha = lerConfigIdade(planilha);
+      S.cfg.idade = { cortes: daPlanilha || presetAutomatico(S.idades).cortes, daPlanilha: Boolean(daPlanilha) };
+    }
     S.rascunho = clonarCfg(S.cfg);
     S.pendente = false;
     S.abaCfg = "cfg-par";
@@ -255,6 +269,7 @@ const baseNome = () => S.arquivo.nome.replace(/\.[^.]+$/, "");
 function clonarCfg(c) {
   return {
     ...c, par: c.par.map((r) => ({ ...r })), met: c.met.map((r) => ({ ...r })), crit: { ...c.crit },
+    idade: c.idade ? { ...c.idade, texto: c.idade.cortes.join(", ") } : null,
   };
 }
 
@@ -336,6 +351,7 @@ function lerRascunhoDoDom() {
     else if (campo === "n") R.n = Number(v);
     else if (campo === "min_fezes" || campo === "min_lamina") R.crit[campo] = Number(v);
     else if (campo === "excluir_inconclusivos" || campo === "exigir_todos_metodos") R.crit[campo] = Boolean(v);
+    else if (campo === "idade_cortes" && R.idade) R.idade.texto = v;
   }
 }
 
@@ -359,6 +375,7 @@ function renderConfig() {
 
   const abas = [["cfg-par", "Parasitos", I.icones.parasito()], ["cfg-met", "Métodos", I.icones.microscopio()],
     ["cfg-amo", "Amostras", I.icones.pote()], ["cfg-cri", "Critérios de inclusão", I.icones.criterios()]];
+  if (R.idade) abas.push(["cfg-ida", "Faixa etária", I.icones.paciente()]);
   h += `<div class="pj-abas" role="tablist" data-grupo="cfg">` + abas.map(([id, t, ic]) =>
     `<button class="pj-aba" type="button" role="tab" aria-selected="${S.abaCfg === id}" data-aba="${id}">${ic}${t}</button>`).join("") + `</div>`;
 
@@ -395,6 +412,7 @@ function renderConfig() {
     `<span>Excluir paciente com algum método não realizado <span class="pj-ajuda" data-dica="Algum método incluído marcado 'Não realizado' em amostra entregue.">?</span></span></label>` +
     `<div class="pj-legenda">Exemplo: para considerar só quem entregou e teve analisadas <b>todas</b> as amostras, escolha <i>Todas as coletas</i> para fezes (e lâmina, se for o caso) e marque as duas opções. A quantidade de coletas segue a aba <b>Amostras</b>.</div></div>`;
 
+  if (R.idade) h += painelIdade(R);
   h += `<div class="pj-pendente"><button class="pj-btn" type="button" data-acao="aplicar">Aplicar configuração e atualizar relatório</button>` +
     `<span class="marcador" id="cfg-pendente"${S.pendente ? "" : " hidden"}>Há alterações ainda não aplicadas · ` +
     `<a href="#" data-acao="descartar">descartar</a></span></div>`;
@@ -413,9 +431,47 @@ function renderConfig() {
   cont.innerHTML = h;
 }
 
+function painelIdade(R) {
+  const I2 = S.idades;
+  const cortes = lerCortes(R.idade.texto);
+  const atual = PRESETS.find((p) => cortes && p.cortes.join() === cortes.join());
+  const fonte = { idade: "coluna idade", idade_anos: "coluna idade_anos", idade_meses: "coluna idade_meses",
+    data_nascimento: "data_nascimento e data_coleta" }[I2.fonte];
+  const fmt = (x) => (x < 2 ? `${Math.round(x * 12)} meses` : `${x.toFixed(1).replace(".", ",")} anos`);
+  let prev = "";
+  if (cortes) {
+    const fx = faixas(cortes, nomesDoPreset(cortes));
+    const cont = fx.map(() => 0);
+    for (const a of I2.porId.values()) { const i = fx.findIndex((f) => a >= f.ini && a < f.fim); if (i >= 0) cont[i]++; }
+    prev = `<div class="pj-faixa pj-faixa-idade" style="grid-template-columns:repeat(${fx.length}, minmax(0, 1fr))">` +
+      fx.map((f, i) => `<div><span class="v">${cont[i]}</span><span class="r">${esc(f.rotulo)}</span></div>`).join("") + `</div>`;
+  }
+  const avisos = [];
+  if (I2.nSemIdade) avisos.push(`${I2.nSemIdade} paciente(s) sem idade ficam fora da análise por faixa etária`);
+  if (I2.invalidos) avisos.push(`${I2.invalidos} célula(s) de idade não reconhecida(s)`);
+  if (I2.inconsistentes) avisos.push(`${I2.inconsistentes} paciente(s) com idades diferentes entre as coletas (foi usada a da 1ª coleta)`);
+  if (I2.semColetaData) avisos.push("há data_nascimento mas falta a coluna data_coleta, então a idade não pôde ser calculada");
+  return `<div data-painel="cfg-ida" data-grupo="cfg"${S.abaCfg === "cfg-ida" ? "" : " hidden"}>` +
+    `<div class="pj-legenda">Idade lida da ${fonte}: ${I2.nComIdade} paciente(s), de ${fmt(I2.min ?? 0)} a ${fmt(I2.max ?? 0)}. ` +
+    `Escolha faixas padrão ou escreva os limites inferiores, em anos (ex.: <b>0, 2, 4, 6</b> = 0–1, 2–3, 4–5 e 6 anos ou mais).</div>` +
+    `<div class="pj-cols c2"><label class="pj-campo"><span>Faixas padrão</span><select data-campo="idade_preset">` +
+    `<option value=""${atual ? "" : " selected"}>Personalizadas</option>` +
+    PRESETS.map((p) => `<option value="${p.id}"${atual === p ? " selected" : ""}>${esc(p.nome)} — ${p.cortes.join(", ")}</option>`).join("") +
+    `</select></label><label class="pj-campo"><span>Limites inferiores das faixas (anos)</span>` +
+    `<input type="text" data-campo="idade_cortes" value="${esc(R.idade.texto)}" inputmode="decimal" data-dica="Números separados por vírgula. Cada número começa uma faixa; a última vai até o fim."></label></div>` +
+    (cortes ? `<div class="pj-secao-sub" style="margin-top:6px">Pacientes por faixa</div>${prev}` : alerta("aviso", "Limites inválidos: use números de 0 a 120 separados por vírgula.")) +
+    (avisos.length ? `<div class="pj-legenda" style="margin-top:8px">Atenção: ${esc(avisos.join("; "))}.</div>` : "") + `</div>`;
+}
+
 function aplicarConfig() {
   lerRascunhoDoDom();
   const R = S.rascunho;
+  let idade = S.cfg.idade;
+  if (R.idade) {
+    const c = lerCortes(R.idade.texto);
+    if (!c) { toast("Faixas etárias inválidas: use números separados por vírgula (ex.: 0, 2, 4, 6)."); return; }
+    idade = { ...S.cfg.idade, cortes: c };
+  }
   const met = R.met.filter((r) => r.Coluna && String(r.Coluna).trim() !== "").map((r) => ({
     Incluir: r.Incluir ?? true, Coluna: r.Coluna,
     "Método": typeof r["Método"] === "string" && r["Método"].trim() ? r["Método"] : r.Coluna,
@@ -428,7 +484,7 @@ function aplicarConfig() {
     ...S.cfg, met, par: atualizarContagens(par, S.df, met), n,
     crit: { min_fezes: R.crit.min_fezes, min_lamina: R.crit.min_lamina,
       excluir_inconclusivos: Boolean(R.crit.excluir_inconclusivos), exigir_todos_metodos: Boolean(R.crit.exigir_todos_metodos) },
-    avisos: [],
+    avisos: [], idade,
   };
   S.rascunho = clonarCfg(S.cfg);
   S.pendente = false;
@@ -473,7 +529,7 @@ function renderTudo() {
       ". Use P1, P2, P3... Essas linhas entram nas prevalências, mas ficam de fora da curva cumulativa.");
   }
   msgs.innerHTML = h;
-  $("#relatorio").innerHTML = renderRelatorio(m);
+  $("#relatorio").innerHTML = renderRelatorio(m, S.idades && S.cfg.idade ? { idades: S.idades, cortes: S.cfg.idade.cortes } : null);
   const aba = document.querySelector(`#relatorio .pj-aba[data-aba="${S.abaRel}"]`);
   if (aba) trocarAba(aba);
   desenharGraficos();

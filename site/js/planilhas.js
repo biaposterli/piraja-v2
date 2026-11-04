@@ -4,6 +4,7 @@
 
 import { METHOD_CATALOG, PARASITE_MAP, PATOGENICOS, COMENSAIS, CATEGORIAS_VALIDAS } from "./engine.js";
 import { AMOSTRAS_VALIDAS, CONFIG_SHEETS, abasConfig, abasConfigModelo } from "./config.js";
+import { SHEET_IDADE, abaConfigIdade } from "./idade.js";
 import { chaveTexto, sortedStr, isNulo } from "./util.js";
 import { carregarExcelJS } from "./tabela.js";
 
@@ -186,7 +187,7 @@ async function leiaMe(wb, ws, texto, logo, parceiros = null) {
 function dados(ws, colunasLamina) {
   const cab = [];
   ws.getRow(1).eachCell({ includeEmpty: false }, (c, col) => { cab[col] = String(c.value); });
-  const LARG = { id_paciente: 14, coleta: 10, nome_paciente: 24, nome_responsavel: 24, status_amostra: 17, status_lamina: 17,
+  const LARG = { id_paciente: 14, coleta: 10, nome_paciente: 24, idade: 16, nome_responsavel: 24, status_amostra: 17, status_lamina: 17,
     bairro: 22, municipio: 20, uf: 7, observacoes: 46 };
   cab.forEach((nome, i) => {
     if (!nome) return;
@@ -334,6 +335,9 @@ const LEIA_ME = "Este modelo traz uma coluna para cada método que o Pirajá rec
   "coloque endereço. Em São Paulo (SP), use o nome do DISTRITO (ex.: Capão Redondo, Itaquera); " +
   "no Distrito Federal, o nome da REGIÃO ADMINISTRATIVA (ex.: Ceilândia, Taguatinga, Plano Piloto) " +
   "e 'Brasília' como município.\n\n" +
+  "Idade (opcional): preencha a coluna idade (em anos, ou com meses: '18 meses', '2 anos e 6 meses') " +
+  "para o relatório mostrar a prevalência por faixa etária. As faixas são escolhidas no site (há faixas " +
+  "padrão para creches, faixas de 5 anos e ciclos de vida) ou na aba Config_Idade.\n\n" +
   "CONFIGURAÇÃO DA ANÁLISE (opcional) — abas Config_Parasitos, Config_Metodos, " +
   "Config_Amostras e Config_Criterios: defina quais parasitos entram na análise (Incluir = Sim/Não), se cada " +
   "um é Patogênico ou Comensal, quais métodos entram e se são de Fezes ou de Lâmina " +
@@ -359,11 +363,11 @@ export async function gerarModelo() {
   const ExcelJS = await carregarExcelJS();
   const colFecal = METHOD_CATALOG.filter((m) => m[3] === "fecal").map((m) => m[0]);
   const colLamina = METHOD_CATALOG.filter((m) => m[3] === "lamina").map((m) => m[0]);
-  const headers = ["id_paciente", "coleta", "nome_paciente", "nome_responsavel", "bairro", "municipio", "uf",
+  const headers = ["id_paciente", "coleta", "nome_paciente", "idade", "nome_responsavel", "bairro", "municipio", "uf",
     "status_amostra", "status_lamina", ...colLamina, ...colFecal, "observacoes"];
   const linhaEx = (id, coleta, stA, stL, valores, obs) => {
     const row = {
-      id_paciente: id, coleta, nome_paciente: "Exemplo Da Silva", nome_responsavel: "Nome Do Responsável",
+      id_paciente: id, coleta, nome_paciente: "Exemplo Da Silva", idade: id === "F-001" ? 4 : "2 anos e 6 meses", nome_responsavel: "Nome Do Responsável",
       bairro: id === "F-001" ? "Lagoa Nova" : "Felipe Camarão", municipio: "Natal", uf: "RN",
       status_amostra: stA, status_lamina: stL, observacoes: obs,
     };
@@ -397,6 +401,7 @@ export async function gerarModelo() {
     ["id_paciente", "Código único do paciente (repete nas linhas de P1/P2/P3)", "texto livre, ex.: F-001"],
     ["coleta", "Qual coleta essa linha representa", "P1, P2, P3 ... (quantas o estudo tiver)"],
     ["nome_paciente", "Nome da criança", "texto livre"],
+    ["idade", "Idade do paciente na coleta (opcional — usada na análise por faixa etária). Pode repetir em todas as linhas do paciente ou só na P1. Alternativas: uma coluna idade_meses, ou data_nascimento + data_coleta.", "anos (ex.: 4 ou 4,5) ou texto com meses (ex.: '18 meses', '2 anos e 6 meses')"],
     ["nome_responsavel", "Nome do responsável (opcional)", "texto livre ou vazio"],
     ["bairro", "Bairro onde o paciente MORA (opcional — usado na prevalência por bairro e no mapa). Só o nome do bairro, nunca o endereço. Em São Paulo/SP use o DISTRITO; no DF, a REGIÃO ADMINISTRATIVA (com municipio = Brasília).", "texto, ex.: Lagoa Nova"],
     ["municipio", "Município onde o paciente mora (opcional, mas necessário para o bairro: há bairros com o mesmo nome em cidades diferentes)", "texto, ex.: Natal"],
@@ -429,18 +434,20 @@ export async function gerarModelo() {
 }
 
 // ======================================================================= configuração
-export async function configXlsx(par, met, n, crit) {
+const comIdade = (abas, cortes) => (cortes ? { ...abas, [SHEET_IDADE]: abaConfigIdade(cortes) } : abas);
+
+export async function configXlsx(par, met, n, crit, cortesIdade = null) {
   const ExcelJS = await carregarExcelJS();
   const wb = new ExcelJS.Workbook();
-  addConfigAbas(wb, abasConfig(par, met, n, crit));
+  addConfigAbas(wb, comIdade(abasConfig(par, met, n, crit), cortesIdade));
   return paraBytes(wb);
 }
 
 /** A planilha enviada + abas Config_* (substitui as antigas, se houver). */
-export async function planilhaComConfig(buffer, nomeArquivo, planilhaLida, par, met, n, crit) {
+export async function planilhaComConfig(buffer, nomeArquivo, planilhaLida, par, met, n, crit, cortesIdade = null) {
   const ExcelJS = await carregarExcelJS();
   const ehConfig = new Set(CONFIG_SHEETS.map(chaveTexto));
-  const abas = abasConfig(par, met, n, crit);
+  const abas = comIdade(abasConfig(par, met, n, crit), cortesIdade);
   let wb = null;
   if (!/\.xls$/i.test(nomeArquivo)) {
     try {
