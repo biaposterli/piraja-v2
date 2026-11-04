@@ -9,9 +9,12 @@
 //                         atualizada em segundo plano.
 // Ao publicar uma versão com arquivos novos no núcleo, aumente VERSAO.
 
-const VERSAO = "piraja-v2-2";
+const VERSAO = "piraja-v2-3";
 const NUCLEO = `${VERSAO}-nucleo`;
 const EXTRAS = `${VERSAO}-extras`;
+// malhas dos mapas (72 MB): cache SEM versão, para não serem apagadas e baixadas
+// de novo a cada atualização do site (continuam sendo atualizadas em segundo plano)
+const MAPAS = "piraja-mapas";
 
 const ARQUIVOS_NUCLEO = [
   "./", "./index.html", "./404.html", "./manifest.webmanifest", "./css/piraja.css",
@@ -38,7 +41,7 @@ self.addEventListener("install", (ev) => {
 
 self.addEventListener("activate", (ev) => {
   ev.waitUntil((async () => {
-    for (const k of await caches.keys()) if (!k.startsWith(VERSAO)) await caches.delete(k);
+    for (const k of await caches.keys()) if (k !== MAPAS && !k.startsWith(VERSAO)) await caches.delete(k);
     await self.clients.claim();
   })());
 });
@@ -60,8 +63,9 @@ async function redePrimeiro(req) {
 
 async function guardadoPrimeiro(req, ev) {
   const guardado = (await caches.match(req, { ignoreSearch: true }));
+  const destino = new URL(req.url).pathname.includes("/geo/") ? MAPAS : EXTRAS;
   const atualizar = fetch(req).then(async (r) => {
-    if (r.ok) (await caches.open(EXTRAS)).put(req, r.clone());
+    if (r.ok) (await caches.open(destino)).put(req, r.clone());
     return r;
   }).catch(() => null);
   if (guardado) { ev.waitUntil(atualizar); return guardado; }

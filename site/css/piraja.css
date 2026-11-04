@@ -415,3 +415,4 @@ a.pj-btn.sec { text-decoration: none; }
 .pj-dialogo .pj-btns { display: flex; gap: 10px; flex-wrap: wrap; margin: 4px 0; }
 .pj-dialogo-rodape { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; border-top: 1px solid var(--linha); padding-top: 12px; margin-top: 4px; }
 .pj-dialogo-rodape .pj-check { margin: 0; font-size: 14px; }
+.pj-status-mapas { margin: 8px 0 0; }
