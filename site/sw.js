@@ -9,7 +9,7 @@
 //                         atualizada em segundo plano.
 // Ao publicar uma versão com arquivos novos no núcleo, aumente VERSAO.
 
-const VERSAO = "piraja-v2-4";
+const VERSAO = "piraja-v2-5";
 const NUCLEO = `${VERSAO}-nucleo`;
 const EXTRAS = `${VERSAO}-extras`;
 // malhas dos mapas (72 MB): cache SEM versão, para não serem apagadas e baixadas
