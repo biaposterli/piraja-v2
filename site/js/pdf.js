@@ -248,7 +248,10 @@ function secaoIdade(c, m, idade) {
   }
 }
 
-export async function gerarPdf(m, { mapa = null, idade = null } = {}) {
+export async function gerarPdf(m, { mapa = null, idade = null, opcoes = null } = {}) {
+  // seções escolhidas na aba Exportar (sem opções = tudo, como antes)
+  const inc = (id) => !opcoes || opcoes.secoes[id] !== false;
+  const bairroMin = opcoes ? Math.max(1, opcoes.bairroMin || 1) : 1;
   const { pdfMake, vfs } = await prepararPdfMake();
   let logo = null;
   try { logo = "data:image/png;base64," + base64(await binario(LOGO_PNG)); } catch { logo = null; }
@@ -311,158 +314,182 @@ export async function gerarPdf(m, { mapa = null, idade = null } = {}) {
   const dom = new Set(m.metodos_ativos.map((x) => x[3]));
   const lamNomes = m.metodos_ativos.filter((x) => x[3] === "lamina").map((x) => x[1]);
   const fc = m.fecal_conclusivo, lc = m.lamina_conclusivo;
-  secaoDominio(c, "Parasitos em amostras de fezes — todos x somente patogênicos", m.especies_resumo, fc.length,
+  if (inc("fezes")) secaoDominio(c, "Parasitos em amostras de fezes — todos x somente patogênicos", m.especies_resumo, fc.length,
     fc.filter((r) => r.positivo_fecal).length, m.prev_fecal, [m.prev_fecal_ic95_inf, m.prev_fecal_ic95_sup],
     m.n_fecal_patogenico, m.prev_fecal_patogenico, [m.prev_fecal_patogenico_ic95_inf, m.prev_fecal_patogenico_ic95_sup], dom.has("fecal"));
-  secaoDominio(c, `Parasitos na lâmina (${lamNomes.join(" / ") || "Graham"}) — todos x somente patogênicos`, m.especies_lamina_resumo, lc.length,
+  if (inc("lamina")) secaoDominio(c, `Parasitos na lâmina (${lamNomes.join(" / ") || "Graham"}) — todos x somente patogênicos`, m.especies_lamina_resumo, lc.length,
     lc.filter((r) => r.positivo_lamina).length, m.prev_lamina, [m.prev_lamina_ic95_inf, m.prev_lamina_ic95_sup],
     m.n_lamina_patogenico, m.prev_lamina_patogenico, [m.prev_lamina_patogenico_ic95_inf, m.prev_lamina_patogenico_ic95_sup], dom.has("lamina"));
 
   // profundidade de amostragem
-  c.push(h2("Pacientes por profundidade de amostragem"));
-  c.push(tabelaPdf(["Categoria", "Nº crianças", "%"], CATEGORIAS_AMOSTRAGEM.map((k) => {
-    return [k, m.cat_counts[k], pyF(npRound1(100 * m.cat_counts[k] / m.total))];
-  }), [80, 35, 25]));
+  if (inc("amostragem")) {
+    c.push(h2("Pacientes por profundidade de amostragem"));
+    c.push(tabelaPdf(["Categoria", "Nº crianças", "%"], CATEGORIAS_AMOSTRAGEM.map((k) => {
+      return [k, m.cat_counts[k], pyF(npRound1(100 * m.cat_counts[k] / m.total))];
+    }), [80, 35, 25]));
+  }
 
   // território
-  if (m.tem_territorio) {
+  const terr = m.tem_territorio && (inc("municipio") || inc("bairro") || (mapa && inc("mapa")));
+  if (terr) {
     c.push(h2("Prevalência por território (moradia)"));
     c.push(P("Pacientes com resultado conclusivo, agrupados pelo bairro e município onde moram. Positivo = qualquer parasito em qualquer tipo de amostra (mesma base da prevalência combinada)."));
     c.push(esp(2));
     for (const [chave, nivel, cols, larg] of [["territorio_municipio", "município", ["municipio", "uf"], [62, 14]],
       ["territorio_bairro", "bairro", ["bairro", "municipio", "uf"], [44, 34, 12]]]) {
-      const d = m[chave];
-      if (!d.length) continue;
+      if (!inc(nivel === "município" ? "municipio" : "bairro")) continue;
+      const todosT = m[chave];
+      const d = nivel === "bairro" ? todosT.filter((r) => r.n_pacientes >= bairroMin) : todosT;
+      if (!todosT.length) continue;
       const rot = { bairro: "Bairro", municipio: "Município", uf: "UF" };
       c.push(h3(`Por ${nivel}`));
       c.push(tabelaPdf([...cols.map((x) => rot[x]), "Pacientes", "Positivos", "Prevalência %", "IC 95%"],
         d.map((r) => [...cols.map((x) => r[x]), r.n_pacientes, r.n_positivos, pyF(r.prevalencia), icTexto(r.ic95_inf, r.ic95_sup)]),
         [...larg, 18, 18, 22, 24]));
+      if (d.length < todosT.length) {
+        c.push(esp(1), P(`${todosT.length - d.length} bairro(s) com menos de ${bairroMin} pacientes não aparecem aqui; a lista completa está no relatório em Excel (aba Prevalencia_Bairro).`, "small"));
+      }
     }
-    if (mapa) {
+    if (mapa && inc("mapa")) {
       c.push(esp(4));
       c.push({ stack: [h3("Mapa"), { image: mapa.dataUrl, width: 172 * MM }], unbreakable: true });
     }
   }
 
-  if (idade) secaoIdade(c, m, idade);
+  if (idade && inc("idade")) secaoIdade(c, m, idade);
 
   // todos os parasitos
-  c.push(h2("Prevalência de todos os parasitos"));
-  c.push(P("Espécies fecais e achados de lâmina, reunidos num só gráfico. As bases de cálculo diferem por domínio (ver coluna \"Base N\" na tabela abaixo). " +
-    "Quando a mesma espécie foi encontrada em métodos de domínios diferentes (ex.: Enterobius vermicularis, tipicamente por um método de lâmina, mas " +
-    "ocasionalmente também visível num método fecal), ela aparece numa única linha \"Fecal + Lâmina\", com denominador e numerador calculados por " +
-    "criança — quem foi detectado em mais de um método conta uma vez só, não duas.", "small"));
-  c.push(esp(1.5));
-  if (m.todos_parasitos_resumo.length) {
-    c.push(svgNo(graficoTodos(m.todos_parasitos_resumo, { ...OPCOES_PDF, largura: 160 * MM * 1.3, comMetodos: true, passo: 26, alturaBarra: 17 }), 160), esp(2));
+  if (inc("todos")) {
+    c.push(h2("Prevalência de todos os parasitos"));
+    c.push(P("Espécies fecais e achados de lâmina, reunidos num só gráfico. As bases de cálculo diferem por domínio (ver coluna \"Base N\" na tabela abaixo). " +
+      "Quando a mesma espécie foi encontrada em métodos de domínios diferentes (ex.: Enterobius vermicularis, tipicamente por um método de lâmina, mas " +
+      "ocasionalmente também visível num método fecal), ela aparece numa única linha \"Fecal + Lâmina\", com denominador e numerador calculados por " +
+      "criança — quem foi detectado em mais de um método conta uma vez só, não duas.", "small"));
+    c.push(esp(1.5));
+    if (m.todos_parasitos_resumo.length) {
+      c.push(svgNo(graficoTodos(m.todos_parasitos_resumo, { ...OPCOES_PDF, largura: 160 * MM * 1.3, comMetodos: true, passo: 26, alturaBarra: 17 }), 160), esp(2));
+    }
+    c.push(tabelaPdf(["Espécie", "Categoria", "Amostra", "N", "Prevalência %", "Base N", "Método(s)", "IC 95%"],
+      m.todos_parasitos_resumo.map((r) => [r.especie, r.categoria, r.dominio, r.n, pyF(r.prevalencia), r.base_n, r.metodos, icTexto(r.ic95_inf, r.ic95_sup)]),
+      [32, 18, 20, 10, 18, 14, 28, 20]));
   }
-  c.push(tabelaPdf(["Espécie", "Categoria", "Amostra", "N", "Prevalência %", "Base N", "Método(s)", "IC 95%"],
-    m.todos_parasitos_resumo.map((r) => [r.especie, r.categoria, r.dominio, r.n, pyF(r.prevalencia), r.base_n, r.metodos, icTexto(r.ic95_inf, r.ic95_sup)]),
-    [32, 18, 20, 10, 18, 14, 28, 20]));
 
   // método x espécie
-  c.push(h2("Prevalência por método diagnóstico e espécie"));
-  c.push(P("Cada valor é a prevalência (%) daquela espécie especificamente pelo método indicado; denominador = pacientes com resultado conclusivo naquele " +
-    "método. Uma mesma espécie pode aparecer em mais de um método fecal. Colunas mostram só os métodos presentes nesta planilha.", "small"));
-  c.push(esp(1.5));
-  if (m.metodo_especie_resumo.length && nomes.length) {
-    const piv = pivotMetodoEspecie(m);
-    const nMet = Math.max(nomes.length, 1);
-    const colEsp = nMet > 5 ? 44 : 50;
-    const colMet = Math.min(25, (174 - colEsp) / nMet);
-    const muitos = nMet > 5;
-    c.push(tabelaPdf(["Espécie", ...nomes.map((x) => x.replaceAll("-", "-\n").replaceAll(" (", "\n("))],
-      piv.map((r) => [r.especie, ...nomes.map((_, i) => (r[`m${i}`] === null ? "—" : pyF(r[`m${i}`])))]),
-      [colEsp, ...nomes.map(() => colMet)], { fonte: muitos ? 7 : 8, padding: muitos ? 2 : 6 }));
-    c.push(esp(2), P("Intervalos de confiança de 95% (Wilson) correspondentes a cada célula acima:", "small"), esp(1));
-    c.push(tabelaPdf(["Método", "Espécie", "N", "Prevalência %", "Categoria", "IC 95%"],
-      m.metodo_especie_resumo.map((r) => [r.metodo, r.especie, r.n, pyF(r.prevalencia), r.categoria, icTexto(r.ic95_inf, r.ic95_sup)]),
-      [25, 40, 12, 22, 25, 26]));
-  } else c.push(P("Sem dados suficientes para este cruzamento."));
+  if (inc("metodo_especie")) {
+    c.push(h2("Prevalência por método diagnóstico e espécie"));
+    c.push(P("Cada valor é a prevalência (%) daquela espécie especificamente pelo método indicado; denominador = pacientes com resultado conclusivo naquele " +
+      "método. Uma mesma espécie pode aparecer em mais de um método fecal. Colunas mostram só os métodos presentes nesta planilha.", "small"));
+    c.push(esp(1.5));
+    if (m.metodo_especie_resumo.length && nomes.length) {
+      const piv = pivotMetodoEspecie(m);
+      const nMet = Math.max(nomes.length, 1);
+      const colEsp = nMet > 5 ? 44 : 50;
+      const colMet = Math.min(25, (174 - colEsp) / nMet);
+      const muitos = nMet > 5;
+      c.push(tabelaPdf(["Espécie", ...nomes.map((x) => x.replaceAll("-", "-\n").replaceAll(" (", "\n("))],
+        piv.map((r) => [r.especie, ...nomes.map((_, i) => (r[`m${i}`] === null ? "—" : pyF(r[`m${i}`])))]),
+        [colEsp, ...nomes.map(() => colMet)], { fonte: muitos ? 7 : 8, padding: muitos ? 2 : 6 }));
+      if (inc("metodo_especie_ic")) {
+        c.push(esp(2), P("Intervalos de confiança de 95% (Wilson) correspondentes a cada célula acima:", "small"), esp(1));
+        c.push(tabelaPdf(["Método", "Espécie", "N", "Prevalência %", "Categoria", "IC 95%"],
+          m.metodo_especie_resumo.map((r) => [r.metodo, r.especie, r.n, pyF(r.prevalencia), r.categoria, icTexto(r.ic95_inf, r.ic95_sup)]),
+          [25, 40, 12, 22, 25, 26]));
+      }
+    } else c.push(P("Sem dados suficientes para este cruzamento."));
+  }
 
   // espécies (fezes)
-  c.push(h2("Prevalência por espécie — métodos fecais (base: fezes com resultado conclusivo)"));
-  c.push(P("Cada espécie encontrada por algum método fecal presente nesta planilha, especificamente — inclusive Enterobius vermicularis, se algum " +
-    "caso tiver sido identificado incidentalmente num método fecal (achado válido, não erro de digitação). A prevalência combinada dessa espécie " +
-    "com métodos de lâmina, sem contar o mesmo paciente duas vezes, está no gráfico unificado acima.", "small"));
-  c.push(esp(1.5));
-  if (m.especies_resumo.length) {
-    c.push(svgNo(graficoEspecies(m.especies_resumo, { ...OPCOES_PDF, largura: 160 * MM * 1.3, semLegenda: true, passo: 26, alturaBarra: 17 }), 160), esp(2));
+  if (inc("especies_fecais")) {
+    c.push(h2("Prevalência por espécie — métodos fecais (base: fezes com resultado conclusivo)"));
+    c.push(P("Cada espécie encontrada por algum método fecal presente nesta planilha, especificamente — inclusive Enterobius vermicularis, se algum " +
+      "caso tiver sido identificado incidentalmente num método fecal (achado válido, não erro de digitação). A prevalência combinada dessa espécie " +
+      "com métodos de lâmina, sem contar o mesmo paciente duas vezes, está no gráfico unificado acima.", "small"));
+    c.push(esp(1.5));
+    if (m.especies_resumo.length) {
+      c.push(svgNo(graficoEspecies(m.especies_resumo, { ...OPCOES_PDF, largura: 160 * MM * 1.3, semLegenda: true, passo: 26, alturaBarra: 17 }), 160), esp(2));
+    }
+    c.push(tabelaPdf(["Espécie", "N", "Prevalência %", "Categoria", "IC 95%"],
+      m.especies_resumo.map((r) => [r.especie, r.n, pyF(r.prevalencia), r.categoria, icTexto(r.ic95_inf, r.ic95_sup)]), [52, 16, 24, 24, 24]));
   }
-  c.push(tabelaPdf(["Espécie", "N", "Prevalência %", "Categoria", "IC 95%"],
-    m.especies_resumo.map((r) => [r.especie, r.n, pyF(r.prevalencia), r.categoria, icTexto(r.ic95_inf, r.ic95_sup)]), [52, 16, 24, 24, 24]));
 
   // poliparasitismo
-  c.push(h2("Mono x poliparasitismo (base: espécies de origem fecal)"));
-  if (m.neg + m.mono + m.poli > 0) {
-    c.push(svgNo(rosca([{ rotulo: "Negativo", valor: m.neg, cor: COR.SALVIA }, { rotulo: "Monoparasitismo", valor: m.mono, cor: COR.FOLHA },
-      { rotulo: "Poliparasitismo", valor: m.poli, cor: COR.COBRE }], { ...OPCOES_PDF, largura: 420, altura: 220, furo: 0 }), 110), esp(2));
-  }
-  if (m.combos_resumo.length) {
-    c.push(P("Combinações mais frequentes:"));
-    c.push(tabelaPdf(["Combinação", "N"], m.combos_resumo.map((r) => [r.combinacao, r.n]), [110, 20]));
+  if (inc("poli")) {
+    c.push(h2("Mono x poliparasitismo (base: espécies de origem fecal)"));
+    if (m.neg + m.mono + m.poli > 0) {
+      c.push(svgNo(rosca([{ rotulo: "Negativo", valor: m.neg, cor: COR.SALVIA }, { rotulo: "Monoparasitismo", valor: m.mono, cor: COR.FOLHA },
+        { rotulo: "Poliparasitismo", valor: m.poli, cor: COR.COBRE }], { ...OPCOES_PDF, largura: 420, altura: 220, furo: 0 }), 110), esp(2));
+    }
+    if (m.combos_resumo.length) {
+      c.push(P("Combinações mais frequentes:"));
+      c.push(tabelaPdf(["Combinação", "N"], m.combos_resumo.map((r) => [r.combinacao, r.n]), [110, 20]));
+    }
   }
 
   // comparação de métodos
-  c.push(h2("Comparação entre métodos diagnósticos"));
-  c.push(P('Denominador = pacientes com resultado conclusivo naquele método específico (exclui "Amostra insuficiente" e "Não realizado"). ' +
-    "Lista os métodos efetivamente presentes nesta planilha.", "small"));
-  c.push(esp(1.5));
-  if (m.metodos_resumo.length) {
-    c.push(svgNo(colunas([{ cor: COR.FOLHA, barras: m.metodos_resumo.map((r) => ({ rotulo: r.metodo, valor: r.prevalencia, texto: `${pyF(r.prevalencia)}%` })) }],
-      { ...OPCOES_PDF, largura: 600, altura: 300, ymax: 105, tituloY: "Prevalência (%)", rotacionar: true }), 160), esp(2));
-  }
-  c.push(tabelaPdf(["Método", "Amostra", "Testáveis", "Positivas", "Inconclusivas", "Prevalência %", "IC 95%"],
-    m.metodos_resumo.map((r) => [r.metodo, r.amostra_biologica, r.n_pacientes_testaveis, r.n_pacientes_positivas, r.n_pacientes_inconclusivas,
-      pyF(r.prevalencia), icTexto(r.ic95_inf, r.ic95_sup)]), [24, 20, 16, 16, 18, 20, 22]));
+  if (inc("metodos")) {
+    c.push(h2("Comparação entre métodos diagnósticos"));
+    c.push(P('Denominador = pacientes com resultado conclusivo naquele método específico (exclui "Amostra insuficiente" e "Não realizado"). ' +
+      "Lista os métodos efetivamente presentes nesta planilha.", "small"));
+    c.push(esp(1.5));
+    if (m.metodos_resumo.length) {
+      c.push(svgNo(colunas([{ cor: COR.FOLHA, barras: m.metodos_resumo.map((r) => ({ rotulo: r.metodo, valor: r.prevalencia, texto: `${pyF(r.prevalencia)}%` })) }],
+        { ...OPCOES_PDF, largura: 600, altura: 300, ymax: 105, tituloY: "Prevalência (%)", rotacionar: true }), 160), esp(2));
+    }
+    c.push(tabelaPdf(["Método", "Amostra", "Testáveis", "Positivas", "Inconclusivas", "Prevalência %", "IC 95%"],
+      m.metodos_resumo.map((r) => [r.metodo, r.amostra_biologica, r.n_pacientes_testaveis, r.n_pacientes_positivas, r.n_pacientes_inconclusivas,
+        pyF(r.prevalencia), icTexto(r.ic95_inf, r.ic95_sup)]), [24, 20, 16, 16, 18, 20, 22]));
 
-  c.push(esp(3), h3("HPJ x Willis — teste de McNemar"));
-  const mc = m.mcnemar_hpj_willis;
-  if (mc.n_pareado === 0 || !mc.tabela) {
-    c.push(P("Sem pacientes com resultado conclusivo em HPJ e Willis simultaneamente (ou um dos dois métodos não está presente nesta planilha) — teste não calculado."));
-  } else {
-    const tb = mc.tabela;
-    c.push(P("Compara os dois métodos aplicados à mesma amostra de fezes da mesma criança (dados pareados), usando só os pacientes em que os dois métodos discordaram entre si.", "small"));
-    c.push(esp(1.5), tabelaPdf(["", "Willis +", "Willis −"], [["HPJ +", tb.pp, tb.pn], ["HPJ −", tb.np, tb.nn]], [30, 30, 30]), esp(2));
-    const rot = { exato: "teste exato (< 25 discordâncias)", chi2_corrigido: "qui-quadrado com correção de continuidade",
-      sem_discordancia: "sem discordâncias — nada a testar" }[mc.metodo] || mc.metodo;
-    c.push(P([`n pareado = ${mc.n_pareado} · ${tb.pn + tb.np} discordância(s) (${tb.pn} HPJ+/Willis−, ${tb.np} HPJ−/Willis+) · ${rot} · `,
-      { text: `p-valor = ${mc.p_valor.toFixed(4)}`, bold: true }, "."]));
+    c.push(esp(3), h3("HPJ x Willis — teste de McNemar"));
+    const mc = m.mcnemar_hpj_willis;
+    if (mc.n_pareado === 0 || !mc.tabela) {
+      c.push(P("Sem pacientes com resultado conclusivo em HPJ e Willis simultaneamente (ou um dos dois métodos não está presente nesta planilha) — teste não calculado."));
+    } else {
+      const tb = mc.tabela;
+      c.push(P("Compara os dois métodos aplicados à mesma amostra de fezes da mesma criança (dados pareados), usando só os pacientes em que os dois métodos discordaram entre si.", "small"));
+      c.push(esp(1.5), tabelaPdf(["", "Willis +", "Willis −"], [["HPJ +", tb.pp, tb.pn], ["HPJ −", tb.np, tb.nn]], [30, 30, 30]), esp(2));
+      const rot = { exato: "teste exato (< 25 discordâncias)", chi2_corrigido: "qui-quadrado com correção de continuidade",
+        sem_discordancia: "sem discordâncias — nada a testar" }[mc.metodo] || mc.metodo;
+      c.push(P([`n pareado = ${mc.n_pareado} · ${tb.pn + tb.np} discordância(s) (${tb.pn} HPJ+/Willis−, ${tb.np} HPJ−/Willis+) · ${rot} · `,
+        { text: `p-valor = ${mc.p_valor.toFixed(4)}`, bold: true }, "."]));
+    }
   }
 
   // nº de potes
-  c.push(h2("Efeito do número de potes de fezes entregues"));
-  c.push(P("Baseado apenas em positividade fecal. Compara subgrupos diferentes de crianças — pode ter viés de seleção; ver curva cumulativa abaixo para uma leitura sem esse viés.", "small"));
-  c.push(esp(1.5));
-  if (m.efeito_n_coletas.length) {
-    c.push(svgNo(colunas([{ cor: COR.MATA, barras: m.efeito_n_coletas.map((r) => ({ rotulo: `${r.n_potes_entregues} pote(s)\nn=${r.n_pacientes}`,
-      valor: r.prevalencia, texto: `${pyF(r.prevalencia)}%` })) }], { ...OPCOES_PDF, largura: 600, altura: 290, ymax: 105, tituloY: "Prevalência (%)" }), 160));
-  }
-  const ca = m.cochran_armitage_efeito_coletas;
-  if (ca.p_valor !== null) {
-    c.push(esp(1.5), P(`Teste de tendência de Cochran-Armitage: Z = ${ca.estatistica_z.toFixed(3)}, p-valor = ${ca.p_valor.toFixed(4)} (${ca.n_grupos} grupos). ${ca.aviso}`, "small"));
-  }
-
-  // curva cumulativa
-  if (m.fecal_cumulativa.length) {
-    c.push(h2("Ganho marginal por amostra — curva cumulativa"));
-    c.push(P(`Mesmo grupo de ${m.fecal_cumulativa[0].n_pacientes} paciente(s) que entregou o número máximo de potes observado no estudo, medida repetida ` +
-      "(1ª, 1ª+2ª ... coletas). Sem viés de comparar subgrupos diferentes de crianças.", "small"));
+  if (inc("potes")) {
+    c.push(h2("Efeito do número de potes de fezes entregues"));
+    c.push(P("Baseado apenas em positividade fecal. Compara subgrupos diferentes de crianças — pode ter viés de seleção; ver curva cumulativa abaixo para uma leitura sem esse viés.", "small"));
     c.push(esp(1.5));
-    c.push(svgNo(linha(m.fecal_cumulativa.map((r) => ({ x: r.k, y: r.prevalencia_cumulativa, texto: `${pyF(r.prevalencia_cumulativa)}%` })),
-      { ...OPCOES_PDF, largura: 600, altura: 290, ymax: 105, cor: COR.MATA, corPonto: COR.MATA, tituloX: "Nº de potes considerados (cumulativo)",
-        tituloY: "Prevalência cumulativa (%)" }), 160));
+    if (m.efeito_n_coletas.length) {
+      c.push(svgNo(colunas([{ cor: COR.MATA, barras: m.efeito_n_coletas.map((r) => ({ rotulo: `${r.n_potes_entregues} pote(s)\nn=${r.n_pacientes}`,
+        valor: r.prevalencia, texto: `${pyF(r.prevalencia)}%` })) }], { ...OPCOES_PDF, largura: 600, altura: 290, ymax: 105, tituloY: "Prevalência (%)" }), 160));
+    }
+    const ca = m.cochran_armitage_efeito_coletas;
+    if (ca.p_valor !== null) {
+      c.push(esp(1.5), P(`Teste de tendência de Cochran-Armitage: Z = ${ca.estatistica_z.toFixed(3)}, p-valor = ${ca.p_valor.toFixed(4)} (${ca.n_grupos} grupos). ${ca.aviso}`, "small"));
+    }
+
+    // curva cumulativa
+    if (m.fecal_cumulativa.length) {
+      c.push(h2("Ganho marginal por amostra — curva cumulativa"));
+      c.push(P(`Mesmo grupo de ${m.fecal_cumulativa[0].n_pacientes} paciente(s) que entregou o número máximo de potes observado no estudo, medida repetida ` +
+        "(1ª, 1ª+2ª ... coletas). Sem viés de comparar subgrupos diferentes de crianças.", "small"));
+      c.push(esp(1.5));
+      c.push(svgNo(linha(m.fecal_cumulativa.map((r) => ({ x: r.k, y: r.prevalencia_cumulativa, texto: `${pyF(r.prevalencia_cumulativa)}%` })),
+        { ...OPCOES_PDF, largura: 600, altura: 290, ymax: 105, cor: COR.MATA, corPonto: COR.MATA, tituloX: "Nº de potes considerados (cumulativo)",
+          tituloY: "Prevalência cumulativa (%)" }), 160));
+    }
   }
 
   // base por paciente (amostra)
-  c.push(h2("Base por paciente"));
-  c.push(P("Tabela completa disponível no arquivo Excel exportado junto com este PDF; abaixo, uma amostra das primeiras linhas."));
-  c.push(esp(2));
-  const base = [...m.por_paciente].sort((a, b) => (a.id_paciente < b.id_paciente ? -1 : a.id_paciente > b.id_paciente ? 1 : 0));
-  c.push(tabelaPdf(["ID", "Nome", "Amostragem", "Espécies"],
-    base.slice(0, 30).map((r) => [r.id_paciente, r.nome_paciente, r.categoria_amostragem, r.especies_str]), [22, 42, 42, 54]));
-  if (base.length > 30) c.push(esp(2), P(`… e mais ${base.length - 30} pacientes. Veja a lista completa no Excel exportado.`, "small"));
+  if (inc("base")) {
+    c.push(h2("Base por paciente"));
+    c.push(P("Tabela completa disponível no arquivo Excel exportado junto com este PDF; abaixo, uma amostra das primeiras linhas."));
+    c.push(esp(2));
+    const base = [...m.por_paciente].sort((a, b) => (a.id_paciente < b.id_paciente ? -1 : a.id_paciente > b.id_paciente ? 1 : 0));
+    c.push(tabelaPdf(["ID", "Nome", "Amostragem", "Espécies"],
+      base.slice(0, 30).map((r) => [r.id_paciente, r.nome_paciente, r.categoria_amostragem, r.especies_str]), [22, 42, 42, 54]));
+    if (base.length > 30) c.push(esp(2), P(`… e mais ${base.length - 30} pacientes. Veja a lista completa no Excel exportado.`, "small"));
+  }
 
   c.push(esp(6), regua(0.8, LINE), esp(3));
   c.push(P("Nota metodológica: a prevalência é calculada por paciente, não por exame — uma criança conta como positiva se qualquer uma de suas coletas " +

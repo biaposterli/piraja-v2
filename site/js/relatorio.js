@@ -4,6 +4,7 @@ import { esc } from "./util.js";
 import { tabela, comIC, textoIC } from "./tabelas.js";
 import { COR, COR_CATEGORIA, graficoEspecies, graficoTodos, colunas, barrasH, linha, funil, pontosIC } from "./graficos.js";
 import { analisarIdade } from "./idade.js";
+import { SECOES_PDF, lerOpcoesPdf } from "./opcoes-pdf.js";
 import { icones } from "./ilustracoes.js";
 import { CATEGORIAS_AMOSTRAGEM } from "./engine.js";
 import { analisarPadroes, limiteFunil, N_MIN_FUNIL, N_MIN_CALOR } from "./padroes.js";
@@ -470,12 +471,27 @@ function abaIdade(m, idade) {
   return h + `</div>`;
 }
 
-function abaExportar() {
-  return `<div class="pj-secao">${secaoTitulo("Baixe os relatórios completos")}` +
-    `<p class="pj-texto">O Excel traz todas as tabelas em abas separadas, prontas para uso em outras análises. O PDF traz um relatório formatado, pronto para impressão ou envio.</p>` +
-    `<div class="pj-btns"><button class="pj-btn" type="button" data-acao="baixar-excel">${icones.baixar("#F4F1EA", "#F4F1EA")} Baixar relatório em Excel</button>` +
-    `<button class="pj-btn" type="button" data-acao="baixar-pdf">${icones.baixar("#F4F1EA", "#F4F1EA")} Baixar relatório em PDF</button></div>` +
-    `<div class="pj-legenda" id="nota-mapa-pdf" style="margin-top:10px"></div></div>`;
+function abaExportar(m, idade) {
+  const op = lerOpcoesPdf();
+  const tem = { territorio: m.tem_territorio, idade: Boolean(idade), mapa: m.tem_territorio };
+  const secoes = SECOES_PDF.filter((s) => !s.requer || tem[s.requer]);
+  const grupos = [...new Set(secoes.map((s) => s.grupo))];
+  const item = (s) => {
+    let extra = "";
+    if (s.id === "bairro") {
+      extra = `<span class="pj-pdf-extra">só bairros com pelo menos <input type="number" min="1" step="1" data-pdf-bairro value="${op.bairroMin}" aria-label="Mínimo de pacientes por bairro"> paciente(s)</span>`;
+    }
+    if (s.id === "mapa") extra = `<span class="pj-pdf-extra" id="pdf-mapa-nota">gere o mapa na aba Visão geral para incluí-lo</span>`;
+    return `<label class="pj-check"><input type="checkbox" data-pdf="${s.id}"${op.secoes[s.id] !== false ? " checked" : ""}><span>${esc(s.nome)}</span></label>${extra}`;
+  };
+  return `<div class="pj-secao">${secaoTitulo("Baixe os relatórios completos")}<div class="pj-cols c2 pj-exportar">` +
+    `<div class="pj-metrica"><div class="pj-secao-sub">Excel</div><p class="pj-texto">Todas as tabelas em abas separadas, prontas para outras análises. Sai sempre completo.</p>` +
+    `<button class="pj-btn" type="button" data-acao="baixar-excel">${icones.baixar("#F4F1EA", "#F4F1EA")} Baixar relatório em Excel</button></div>` +
+    `<div class="pj-metrica"><div class="pj-secao-sub">PDF</div><p class="pj-texto">Relatório formatado, para imprimir ou enviar. Escolha o que entra: o resumo inicial e a nota metodológica saem sempre.</p>` +
+    `<div class="pj-pdf-atalhos">Marcar: <a href="#" data-acao="pdf-sel" data-sel="tudo">tudo</a> · <a href="#" data-acao="pdf-sel" data-sel="resumido">resumido</a> · <a href="#" data-acao="pdf-sel" data-sel="nada">nada</a></div>` +
+    grupos.map((g) => `<fieldset class="pj-pdf-grupo"><legend>${esc(g)}</legend>${secoes.filter((s) => s.grupo === g).map(item).join("")}</fieldset>`).join("") +
+    `<button class="pj-btn" type="button" data-acao="baixar-pdf" style="margin-top:12px">${icones.baixar("#F4F1EA", "#F4F1EA")} Baixar relatório em PDF</button>` +
+    `<div class="pj-legenda" id="nota-mapa-pdf" style="margin-top:10px"></div></div></div></div>`;
 }
 
 // ---------------------------------------------------------------- passo 04 inteiro
@@ -499,7 +515,7 @@ export function renderRelatorio(m, idade = null) {
   if (idade) abas.splice(3, 0, ["idade", "Faixa etária", icones.paciente()]);
   h += `<div class="pj-abas" role="tablist" data-grupo="rel">` + abas.map(([id, t, ic], i) =>
     `<button class="pj-aba" role="tab" aria-selected="${i === 0}" data-aba="rel-${id}">${ic}${esc(t)}</button>`).join("") + `</div>`;
-  const conteudo = { geral: abaGeral(m), especies: abaEspecies(m), metodos: abaMetodos(m), base: abaBase(m), exportar: abaExportar() };
+  const conteudo = { geral: abaGeral(m), especies: abaEspecies(m), metodos: abaMetodos(m), base: abaBase(m), exportar: abaExportar(m, idade) };
   if (m.tem_territorio) conteudo.padroes = abaPadroes(m);
   if (idade) conteudo.idade = abaIdade(m, idade);
   h += abas.map(([id], i) => `<div data-painel="rel-${id}" data-grupo="rel"${i ? " hidden" : ""}>${conteudo[id]}</div>`).join("");

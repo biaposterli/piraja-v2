@@ -4,6 +4,7 @@
 import { esc, sortedStr, normText } from "./util.js";
 import { TODAS, criteriosAtivos, coletasDuplicadas, coletasNaoReconhecidas, REQUIRED_COLUMNS, CATEGORIAS_VALIDAS, categoriaDe } from "./engine.js";
 import { sugerirEspecie, ehEspeciePadrao } from "./sugestoes.js";
+import { SECOES_PDF, RESUMIDO, salvarOpcoesPdf } from "./opcoes-pdf.js";
 import { COLUNAS_IDADE, PRESETS, lerIdades, presetAutomatico, lerCortes, lerConfigIdade, faixas, nomesDoPreset } from "./idade.js";
 import { AMOSTRAS_VALIDAS, atualizarContagens, construirConfig } from "./config.js";
 import { lerPlanilha } from "./tabela.js";
@@ -151,7 +152,11 @@ async function aoClicar(e) {
     });
   } else if (acao === "trocar-arquivo") $("#arquivo").click();
   else if (acao === "aplicar") aplicarConfig();
-  else if (acao === "usar-sugestao" || acao === "usar-todas-sugestoes") {
+  else if (acao === "pdf-sel") {
+    const sel = el.dataset.sel;
+    for (const cb of document.querySelectorAll("[data-pdf]")) cb.checked = sel === "tudo" || (sel === "resumido" && RESUMIDO.has(cb.dataset.pdf));
+    salvarOpcoesPdf(opcoesPdfDoDom());
+  } else if (acao === "usar-sugestao" || acao === "usar-todas-sugestoes") {
     lerRascunhoDoDom();
     const idx = acao === "usar-sugestao" ? [Number(el.dataset.i)] : S.rascunho.par.map((_, i) => i);
     const n = idx.reduce((t, i) => t + usarSugestao(i), 0);
@@ -186,7 +191,9 @@ async function aoClicar(e) {
   } else if (acao === "baixar-pdf") {
     await comBotao(el, async () => {
       const { gerarPdf } = await import("./pdf.js");
-      baixar(await gerarPdf(S.resultado.metrics, { mapa: S.mapa, idade: idadeRel() }), "Relatorio_Analise_Epidemiologica.pdf", "application/pdf");
+      const opcoes = opcoesPdfDoDom();
+      if (!Object.values(opcoes.secoes).some(Boolean)) toast("Nenhuma seção marcada: o PDF terá só o resumo e a nota metodológica.");
+      baixar(await gerarPdf(S.resultado.metrics, { mapa: S.mapa, idade: idadeRel(), opcoes }), "Relatorio_Analise_Epidemiologica.pdf", "application/pdf");
     });
   }
 }
@@ -197,8 +204,17 @@ function fecharMenu() {
   if (btn) { btn.setAttribute("aria-expanded", "false"); btn.textContent = "☰ Menu"; }
 }
 
+/** Seções marcadas na aba Exportar (as que não aparecem ali ficam como estavam). */
+function opcoesPdfDoDom() {
+  const secoes = Object.fromEntries(SECOES_PDF.map((s) => [s.id, true]));
+  for (const cb of document.querySelectorAll("[data-pdf]")) secoes[cb.dataset.pdf] = cb.checked;
+  const b = Number(document.querySelector("[data-pdf-bairro]")?.value);
+  return { secoes, bairroMin: Number.isFinite(b) && b >= 1 ? Math.trunc(b) : 1 };
+}
+
 function aoMudar(e) {
   const t = e.target;
+  if (t.matches("[data-pdf], [data-pdf-bairro]")) { salvarOpcoesPdf(opcoesPdfDoDom()); return; }
   if (t.dataset.campo === "idade_preset" || t.dataset.campo === "idade_cortes") {
     lerRascunhoDoDom();
     if (t.dataset.campo === "idade_preset" && t.value) S.rascunho.idade.texto = PRESETS.find((p) => p.id === t.value).cortes.join(", ");
@@ -554,7 +570,9 @@ async function alternarMapa(ligado) {
 
 function atualizarNotaMapa() {
   const n = $("#nota-mapa-pdf");
-  if (n) n.textContent = S.mapa ? `O PDF inclui o mapa gerado: “${S.mapa.titulo}”.` : "";
+  if (n) n.textContent = S.mapa ? `Mapa pronto para o PDF: “${S.mapa.titulo}”.` : "";
+  const nm = $("#pdf-mapa-nota");
+  if (nm) nm.textContent = S.mapa ? `mapa gerado: “${S.mapa.titulo}”` : "gere o mapa na aba Visão geral para incluí-lo";
 }
 
 export { S as estado, sortedStr };
