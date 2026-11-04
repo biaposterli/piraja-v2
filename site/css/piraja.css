@@ -268,3 +268,10 @@ details.pj-exp > .corpo { padding: 4px 14px 14px; }
   .pj-barra, .pj-menu, .pj-hero, .pj-como { display: none; }
   .pj-main { margin: 0; }
 }
+
+/* ------------------------------------------------------------- sugestões de grafia */
+.pj-sugestao { margin-top: 4px; font-size: 12.5px; color: var(--cobre); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.pj-sugestao .pj-btn.peq { padding: 2px 10px; font-size: 12px; }
+.pj-sugestao.nada { color: var(--tinta-clara); }
+.pj-grupo-dest { margin: 4px 0 6px; padding-left: 18px; font-size: 13.5px; color: var(--tinta); }
+.pj-grupo-dest span { color: var(--tinta-clara); }

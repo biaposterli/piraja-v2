@@ -2,7 +2,8 @@
 // Controla os passos 01–04: modelo, envio da planilha, configuração e relatório.
 
 import { esc, sortedStr, normText } from "./util.js";
-import { TODAS, criteriosAtivos, coletasDuplicadas, coletasNaoReconhecidas, REQUIRED_COLUMNS, CATEGORIAS_VALIDAS } from "./engine.js";
+import { TODAS, criteriosAtivos, coletasDuplicadas, coletasNaoReconhecidas, REQUIRED_COLUMNS, CATEGORIAS_VALIDAS, categoriaDe } from "./engine.js";
+import { sugerirEspecie, ehEspeciePadrao } from "./sugestoes.js";
 import { AMOSTRAS_VALIDAS, atualizarContagens, construirConfig } from "./config.js";
 import { lerPlanilha } from "./tabela.js";
 import { prepararPlanilha, estadoInicialConfig, analisar } from "./pipeline.js";
@@ -148,7 +149,12 @@ async function aoClicar(e) {
     });
   } else if (acao === "trocar-arquivo") $("#arquivo").click();
   else if (acao === "aplicar") aplicarConfig();
-  else if (acao === "descartar") { S.rascunho = clonarCfg(S.cfg); S.pendente = false; renderConfig(); }
+  else if (acao === "usar-sugestao" || acao === "usar-todas-sugestoes") {
+    lerRascunhoDoDom();
+    const idx = acao === "usar-sugestao" ? [Number(el.dataset.i)] : S.rascunho.par.map((_, i) => i);
+    const n = idx.reduce((t, i) => t + usarSugestao(i), 0);
+    if (n) { marcarPendente(); renderConfig(); toast(`${n} sugestão(ões) usada(s). Clique em Aplicar para atualizar o relatório.`); }
+  } else if (acao === "descartar") { S.rascunho = clonarCfg(S.cfg); S.pendente = false; renderConfig(); }
   else if (acao === "add-metodo") {
     lerRascunhoDoDom();
     S.rascunho.met.push({ Incluir: true, Coluna: null, "Método": "", Amostra: AMOSTRAS_VALIDAS[0] });
@@ -261,10 +267,39 @@ function optionList(opcoes, atual, rotulo = (v) => v) {
   return opcoes.map((v) => `<option value="${esc(v)}"${String(v) === String(atual) ? " selected" : ""}>${esc(rotulo(v))}</option>`).join("");
 }
 
+// Sugestão de grafia para um parasito da tabela do passo 03 (só para nomes fora
+// da lista e ainda não agrupados). Nunca é aplicada sem o clique de quem usa.
+function sugestaoLinha(r) {
+  if (ehEspeciePadrao(r.Parasito) || String(r["Agrupar como"] ?? "").trim()) return null;
+  return sugerirEspecie(r.Parasito);
+}
+
+function celulaParasito(r, i) {
+  const s = sugestaoLinha(r);
+  let extra = "";
+  if (s && s.sugestao) {
+    extra = `<div class="pj-sugestao"><span>Você quis dizer <i>${esc(s.sugestao)}</i>?</span>` +
+      `<button class="pj-btn sec peq" type="button" data-acao="usar-sugestao" data-i="${i}" data-dica="${esc(`Preenche 'Agrupar como' com ${s.sugestao} (${s.motivo}). Depois, clique em Aplicar.`)}">Usar</button></div>`;
+  } else if (s && r["Classificação"] === "Não classificado") {
+    extra = `<div class="pj-sugestao nada">Não reconhecido: ${esc(s.motivo)}. Classifique à mão.</div>`;
+  }
+  return `<td>${esc(r.Parasito)}${extra}</td>`;
+}
+
+function usarSugestao(i) {
+  const r = S.rascunho.par[i];
+  const s = sugestaoLinha(r);
+  if (!s || !s.sugestao) return 0;
+  r["Agrupar como"] = s.sugestao;
+  const alvo = S.rascunho.par.find((x) => x.Parasito === s.sugestao);
+  r["Classificação"] = alvo ? alvo["Classificação"] : categoriaDe(s.sugestao);
+  return 1;
+}
+
 function editorParasitos(par) {
   const linhas = par.map((r, i) => `<tr class="${r.Incluir ? "" : "fora"}" data-i="${i}">` +
     `<td><input type="checkbox" data-campo="Incluir" data-tab="par" data-i="${i}"${r.Incluir ? " checked" : ""} aria-label="Incluir ${esc(r.Parasito)}"></td>` +
-    `<td>${esc(r.Parasito)}</td>` +
+    celulaParasito(r, i) +
     `<td><select data-campo="Classificação" data-tab="par" data-i="${i}">${optionList(CATEGORIAS_VALIDAS, r["Classificação"])}</select></td>` +
     `<td><input type="text" data-campo="Agrupar como" data-tab="par" data-i="${i}" value="${esc(r["Agrupar como"] ?? "")}" aria-label="Agrupar ${esc(r.Parasito)} como"></td>` +
     `<td>${esc(r["Encontrado em"] ?? "")}</td><td class="num">${r["Ocorrências"] ?? 0}</td></tr>`).join("");
@@ -304,6 +339,14 @@ function lerRascunhoDoDom() {
   }
 }
 
+function avisoSugestoes(par) {
+  const n = par.filter((r) => sugestaoLinha(r)?.sugestao).length;
+  if (!n) return "";
+  return alerta("info", `${n === 1 ? "Um nome parece" : `${n} nomes parecem`} grafia diferente de uma espécie da lista. ` +
+    `Confira a sugestão em cada linha e clique em <b>Usar</b>, ou ` +
+    `<a href="#" data-acao="usar-todas-sugestoes">usar todas as sugestões</a>. Nada é agrupado sem a sua confirmação; depois, clique em <b>Aplicar</b>.`);
+}
+
 function renderConfig() {
   const C = S.cfg, R = S.rascunho;
   const cont = $("#passo-3");
@@ -322,7 +365,7 @@ function renderConfig() {
   // parasitos
   h += `<div data-painel="cfg-par" data-grupo="cfg"${S.abaCfg === "cfg-par" ? "" : " hidden"}>` +
     `<div class="pj-legenda">Desmarque <b>Incluir</b> para deixar um parasito fora da análise (uma amostra que só tinha parasitos excluídos passa a contar como negativa). A <b>Classificação</b> define o que entra nos gráficos de patogênicos. Use <b>Agrupar como</b> para juntar nomes diferentes da mesma espécie — escreva o nome final nas linhas a juntar.</div>` +
-    editorParasitos(R.par) + `</div>`;
+    avisoSugestoes(R.par) + editorParasitos(R.par) + `</div>`;
   // métodos
   h += `<div data-painel="cfg-met" data-grupo="cfg"${S.abaCfg === "cfg-met" ? "" : " hidden"}>` +
     `<div class="pj-legenda">Marque os métodos que entram na análise e indique o tipo de amostra: métodos de <b>Fezes</b> e de <b>Lâmina (Graham)</b> são sempre analisados separadamente. Para usar um método fora do catálogo, adicione uma linha e escolha a coluna da planilha.</div>` +
