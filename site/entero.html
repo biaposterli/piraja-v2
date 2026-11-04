@@ -34,6 +34,7 @@
         <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M12.5 4.5 7 10l5.5 5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </button>
     </div>
+    <a class="pj-voltar" href="./" title="Voltar à página inicial do Pirajá"><svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><path d="M16 10H5m4.5-4.5L5 10l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Todas as áreas</span></a>
     <nav class="pj-nav" id="nav" aria-label="Seções"></nav>
     <div class="pj-barra-rodape">
       <div class="pj-arquivo-atual" id="arquivo-atual" hidden></div>
@@ -51,7 +52,10 @@
 
   <!-- topo e navegação (celular) -->
   <header class="pj-topo-movel">
-    <a class="marca-link" href="./" title="Voltar ao início do Pirajá"><img src="brand/piraja-entero-cor.png" alt="Pirajá Entero — voltar ao início" height="30"></a>
+    <div class="pj-topo-marca">
+      <a class="pj-voltar-movel" href="./" aria-label="Voltar para todas as áreas" title="Todas as áreas"><svg viewBox="0 0 20 20" width="20" height="20" aria-hidden="true"><path d="M16 10H5m4.5-4.5L5 10l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+      <a class="marca-link" href="./" title="Voltar ao início do Pirajá"><img src="brand/piraja-entero-cor.png" alt="Pirajá Entero — voltar ao início" height="30"></a>
+    </div>
     <button class="pj-btn sec peq pj-instalar" type="button" data-acao="instalar" hidden>Instalar</button>
   </header>
   <nav class="pj-mnav" id="mnav" aria-label="Seções"></nav>

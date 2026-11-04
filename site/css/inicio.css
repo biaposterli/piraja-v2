@@ -25,6 +25,14 @@
 
 .pi-main { padding-bottom: 48px; }
 
+.pi-topo-acoes { display: flex; align-items: center; gap: 24px; }
+/* botão secundário do design system: contorno control-border, raio 8px */
+.pi-instalar, .pi-btn-sec { display: inline-flex; align-items: center; gap: 8px; font: 600 14px/20px var(--sans); color: var(--mata); background: transparent;
+  border: 1px solid #7D8A84; border-radius: 8px; padding: 8px 14px; cursor: pointer; white-space: nowrap; }
+.pi-instalar:hover, .pi-btn-sec:hover { background: var(--folha-soft); border-color: var(--mata); }
+.pi-instalar svg { flex: 0 0 auto; }
+#como-instalar .pj-lista { color: var(--tinta); }
+
 /* hero */
 .pi-hero { position: relative; overflow: hidden; background: var(--mata); border-radius: 14px; padding: 40px 48px;
   display: grid; grid-template-columns: minmax(0, 1fr) 220px; gap: 32px; align-items: center; margin-bottom: 48px; }
@@ -105,6 +113,8 @@
   .pi-topo { flex-wrap: wrap; }
   .pi-marca img { height: 46px; }
   .pi-realizacao span { display: none; }
+  .pi-topo-acoes { gap: 14px; }
+  .pi-instalar { padding: 7px 10px; font-size: 13px; }
   .pi-realizacao img { height: 36px; } .pi-realizacao img + img { height: 24px; }
   .pi-hero { padding: 24px 20px; margin-bottom: 32px; }
   .pi-hero p { font-size: 16px; line-height: 26px; }

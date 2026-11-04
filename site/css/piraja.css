@@ -417,3 +417,16 @@ a.pj-btn.sec { text-decoration: none; }
 .pj-dialogo-rodape { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; border-top: 1px solid var(--linha); padding-top: 12px; margin-top: 4px; }
 .pj-dialogo-rodape .pj-check { margin: 0; font-size: 14px; }
 .pj-status-mapas { margin: 8px 0 0; }
+
+/* voltar à página inicial (todas as áreas) */
+.pj-voltar { display: flex; align-items: center; gap: 12px; margin: 18px 0 10px; padding: 9px 12px; border-radius: 8px; text-decoration: none;
+  color: rgba(244, 241, 234, .78); font-size: 14px; border: 1px solid rgba(244, 241, 234, .2); }
+.pj-voltar svg { flex: 0 0 auto; }
+.pj-voltar:hover { background: rgba(244, 241, 234, .08); color: var(--papel); border-color: rgba(244, 241, 234, .38); }
+.pj-topo-marca { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.pj-voltar-movel { display: grid; place-items: center; width: 36px; height: 36px; margin-left: -8px; border-radius: 8px; color: var(--mata); }
+.pj-voltar-movel:hover { background: var(--folha-tinta); }
+@media (min-width: 901px) {
+  body.barra-recolhida .pj-voltar { justify-content: center; padding: 9px 0; }
+  body.barra-recolhida .pj-voltar span { display: none; }
+}
