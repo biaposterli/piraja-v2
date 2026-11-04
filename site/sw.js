@@ -25,7 +25,7 @@ const ARQUIVOS_NUCLEO = [
   "./vendor/exceljs.min.js", "./vendor/xlsx.full.min.js", "./vendor/pdfmake.min.js",
   "./brand/piraja-entero-negativo.svg", "./brand/piraja-entero-cor.png", "./brand/piraja-favicon.svg", "./brand/piraja-favicon.png",
   "./brand/piraja-horizontal-cor.svg", "./brand/piraja-simbolo-negativo.svg",
-  "./brand/areas/piraja-entero-horizontal-cor.svg", "./brand/areas/piraja-entero-pictograma.svg", "./brand/areas/piraja-hemo-horizontal-cor.svg", "./brand/areas/piraja-hemo-pictograma.svg", "./brand/areas/piraja-bac-horizontal-cor.svg", "./brand/areas/piraja-bac-pictograma.svg", "./brand/areas/piraja-virus-horizontal-cor.svg", "./brand/areas/piraja-virus-pictograma.svg", "./brand/areas/piraja-fungi-horizontal-cor.svg", "./brand/areas/piraja-fungi-pictograma.svg",
+  "./brand/areas/piraja-entero-horizontal-cor.svg", "./brand/areas/piraja-entero-pictograma.svg", "./brand/areas/piraja-hemo-horizontal-cor.svg", "./brand/areas/piraja-hemo-pictograma.svg", "./brand/areas/piraja-bac-horizontal-cor.svg", "./brand/areas/piraja-bac-pictograma.svg", "./brand/areas/piraja-virus-horizontal-cor.svg", "./brand/areas/piraja-virus-pictograma.svg", "./brand/areas/piraja-fungi-horizontal-cor.svg", "./brand/areas/piraja-fungi-pictograma.svg", "./brand/areas/piraja-entomo-horizontal-cor.svg", "./brand/areas/piraja-entomo-pictograma.svg",
   "./brand/parceiros/lapahv.png", "./brand/parceiros/ufrn.png", "./brand/app/icone-192.png", "./brand/app/icone-512.png",
   "./brand/fonts/Fraunces-Regular.ttf", "./brand/fonts/Fraunces-SemiBold.ttf",
   "./brand/fonts/InstrumentSans-Regular.ttf", "./brand/fonts/InstrumentSans-SemiBold.ttf",

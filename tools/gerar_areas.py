@@ -1,11 +1,17 @@
-"""Gera as assinaturas das áreas do Pirajá (Hemo, Bac, Virus, Fungi) a partir das
-assinaturas oficiais do Pirajá · Entero.
+"""Gera as assinaturas das áreas do Pirajá (Hemo, Bac, Virus, Fungi, Entomo) a partir
+das assinaturas oficiais do Pirajá · Entero, seguindo o design system do Pirajá:
+"um módulo novo mantém a população e ganha um desenho próprio para os positivos".
 
-O símbolo (os 19 pontos) e o logotipo "Pirajá" ficam idênticos aos do Entero.
-Cada área muda só duas coisas:
-  - a cor de destaque (os pontos "positivos" do símbolo e o descritor);
-  - o descritor (ENTERO -> HEMO, BAC, VIRUS, FUNGI), em Instrument Sans SemiBold,
+O logotipo "Pirajá", a população de 19 pontos e a posição dos 3 positivos ficam
+idênticos aos do Entero. Cada área muda três coisas:
+  - o desenho dos positivos (Entero: ponto; Hemo: anel; Bac: bastonete; Virus:
+    vírion com espículas; Fungi: levedura brotando; Entomo: corpo com seis patas);
+  - a cor de destaque (acentos terrosos e fechados; Hemo usa o vinho do sistema);
+  - o descritor (ENTERO -> HEMO, BAC...), em Instrument Sans SemiBold,
     com o mesmo corpo, espaçamento e alinhamento do ENTERO.
+Nas versões de uma cor (preto e branco), o Entero usa anel (como no original) e o
+Hemo usa anel com ponto central; as outras formas ficam sólidas, porque a silhueta
+já as distingue dos pontos negativos.
 
 Uso: python3 tools/gerar_areas.py   (precisa de fonttools e svgelements)
 Saída:
@@ -30,14 +36,74 @@ FONTE = TTFont(RAIZ / "site/brand/fonts/InstrumentSans-SemiBold.ttf")
 
 COBRE, COBRE_CLARO = "#9C4A2F", "#D08A6A"
 
-# cor de destaque sobre fundo claro / sobre a mata (negativo)
+# descritor, cor sobre fundo claro, cor sobre a mata (negativo), fundo suave (badge/cartão)
 AREAS = {
-    "entero": ("ENTERO", COBRE, COBRE_CLARO),
-    "hemo": ("HEMO", "#A3243B", "#E8909C"),    # carmim — sangue
-    "bac": ("BAC", "#8C6410", "#E0BC5C"),      # ocre — colônias em ágar
-    "virus": ("VIRUS", "#2B5C8F", "#93B8DE"),  # anil
-    "fungi": ("FUNGI", "#6E4580", "#C7A3D2"),  # ameixa
+    "entero": ("ENTERO", COBRE, COBRE_CLARO, "#F3E1D8"),     # cobre (token do sistema)
+    "hemo": ("HEMO", "#5B2A4A", "#C99AB8", "#EEDFE8"),       # vinho (token do sistema)
+    "bac": ("BAC", "#7A5812", "#D8B562", "#F1E7CF"),         # ocre
+    "virus": ("VIRUS", "#35506A", "#9FB6CD", "#E2E8EF"),     # ardósia
+    "fungi": ("FUNGI", "#6A4A2F", "#CBA788", "#EFE4D8"),     # castanho
+    "entomo": ("ENTOMO", "#3E3C6C", "#ADAAD8", "#E6E5F2"),   # anil
 }
+
+
+def forma(area, cx, cy, r, cor, uma_cor=False):
+    """Desenho de um positivo centrado em (cx, cy), no lugar de um ponto de raio r."""
+    import math
+    if area == "entero":
+        if uma_cor:
+            return f'<circle cx="{cx:.2f}" cy="{cy:.2f}" r="{r * .78:.2f}" fill="none" stroke="{cor}" stroke-width="{r * .44:.2f}"></circle>'
+        return f'<circle cx="{cx:.2f}" cy="{cy:.2f}" r="{r:.2f}" fill="{cor}"></circle>'
+    if area == "hemo":
+        anel = f'<circle cx="{cx:.2f}" cy="{cy:.2f}" r="{r * .78:.2f}" fill="none" stroke="{cor}" stroke-width="{r * .44:.2f}"></circle>'
+        return anel + (f'<circle cx="{cx:.2f}" cy="{cy:.2f}" r="{r * .22:.2f}" fill="{cor}"></circle>' if uma_cor else "")
+    if area == "bac":  # bastonete
+        w, h = r * 2.0, r * 1.22
+        return (f'<rect x="{cx - w / 2:.2f}" y="{cy - h / 2:.2f}" width="{w:.2f}" height="{h:.2f}" rx="{h / 2:.2f}" '
+                f'fill="{cor}" transform="rotate(-35 {cx:.2f} {cy:.2f})"></rect>')
+    if area == "virus":  # vírion: núcleo com oito espículas arredondadas
+        out = f'<circle cx="{cx:.2f}" cy="{cy:.2f}" r="{r * .64:.2f}" fill="{cor}"></circle>'
+        for i in range(8):
+            a = math.radians(22.5 + 45 * i)
+            out += (f'<circle cx="{cx + r * .93 * math.cos(a):.2f}" cy="{cy + r * .93 * math.sin(a):.2f}" '
+                    f'r="{r * .22:.2f}" fill="{cor}"></circle>')
+        return out
+    if area == "fungi":  # levedura brotando
+        return (f'<circle cx="{cx - r * .2:.2f}" cy="{cy + r * .2:.2f}" r="{r * .78:.2f}" fill="{cor}"></circle>'
+                f'<circle cx="{cx + r * .58:.2f}" cy="{cy - r * .58:.2f}" r="{r * .42:.2f}" fill="{cor}"></circle>')
+    if area == "entomo":  # artrópode: corpo com seis patas
+        out = f'<ellipse cx="{cx:.2f}" cy="{cy:.2f}" rx="{r * .5:.2f}" ry="{r * .66:.2f}" fill="{cor}" transform="rotate(35 {cx:.2f} {cy:.2f})"></ellipse>'
+        pernas = ""
+        for lado in (-1, 1):
+            for dy, ang in ((-.36, -38), (0, 0), (.36, 38)):
+                x0, y0 = lado * r * .36, dy * r
+                x1 = x0 + lado * r * .62 * math.cos(math.radians(ang))
+                y1 = y0 + r * .62 * math.sin(math.radians(ang))
+                pernas += f"M{x0:.2f} {y0:.2f}L{x1:.2f} {y1:.2f}"
+        return out + (f'<path d="{pernas}" fill="none" stroke="{cor}" stroke-width="{r * .2:.2f}" stroke-linecap="round" '
+                      f'transform="translate({cx:.2f} {cy:.2f}) rotate(35)"></path>')
+    raise ValueError(area)
+
+
+_POS_SOLIDO = re.compile(r'<circle cx="([\d.]+)" cy="([\d.]+)" r="([\d.]+)" fill="(#9C4A2F|#D08A6A)"></circle>')
+_POS_ANEL = re.compile(r'<circle cx="([\d.]+)" cy="([\d.]+)" r="([\d.]+)" fill="none" stroke="(#[0-9A-F]{6})" stroke-width="([\d.]+)"></circle>')
+
+
+def trocar_positivos(svg, area, var):
+    """Troca os 3 positivos do símbolo pelo desenho da área, mantendo a posição."""
+    _, cor, claro, _ = AREAS[area]
+    if var in ("cor", "negativo"):
+        nova = cor if var == "cor" else claro
+        def sub(m):
+            return forma(area, float(m[1]), float(m[2]), float(m[3]), nova)
+        out, n = _POS_SOLIDO.subn(sub, svg)
+    else:  # preto/branco: positivos estão em anel (r = .78 do ponto, traço .44)
+        def sub(m):
+            r = float(m[3]) + float(m[5]) / 2
+            return forma(area, float(m[1]), float(m[2]), r, m[4], uma_cor=True)
+        out, n = _POS_ANEL.subn(sub, svg)
+    assert n >= 1, (area, var)
+    return out
 
 DESC_PATH = re.compile(r'<path d="[^"]*" fill="[^"]*"(?: transform="[^"]*")?></path>(?=</svg>)')
 
@@ -108,31 +174,28 @@ def novo_descritor(svg, rotulo, cor, alinhar):
 
 def gerar():
     SITE_AREAS.mkdir(parents=True, exist_ok=True)
-    for area, (rotulo, cor, claro) in AREAS.items():
+    for area, (rotulo, cor, claro, _) in AREAS.items():
         dest = IV / f"piraja-{area}"
         dest.mkdir(exist_ok=True)
-        for forma in ("horizontal", "vertical", "simbolo"):
+        for formato in ("horizontal", "vertical", "simbolo"):
             for var in ("cor", "negativo", "preto", "branco"):
-                src = (IV / f"piraja-entero/piraja-entero-{forma}-{var}.svg").read_text()
+                src = (IV / f"piraja-entero/piraja-entero-{formato}-{var}.svg").read_text()
                 s = src
                 if area != "entero":
-                    if var == "cor":
-                        s = s.replace(COBRE, cor)
-                    elif var == "negativo":
-                        s = s.replace(COBRE_CLARO, claro)
-                    if forma != "simbolo":
+                    s = trocar_positivos(s, area, var)
+                    if formato != "simbolo":
                         fill = {"cor": cor, "negativo": claro, "preto": "#000000", "branco": "#FFFFFF"}[var]
-                        s = novo_descritor(s, rotulo, fill, "esquerda" if forma == "horizontal" else "centro")
-                    nome = {"simbolo": "símbolo"}.get(forma, forma)
+                        s = novo_descritor(s, rotulo, fill, "esquerda" if formato == "horizontal" else "centro")
+                    nome = {"simbolo": "símbolo"}.get(formato, formato)
                     s = re.sub(r"<title>.*?</title>", f"<title>Pirajá {rotulo.capitalize()} {nome} {var}</title>", s)
-                    (dest / f"piraja-{area}-{forma}-{var}.svg").write_text(s)
-                if var in ("cor", "negativo") and forma == "horizontal":
-                    shutil.copy(dest / f"piraja-{area}-{forma}-{var}.svg", SITE_AREAS / f"piraja-{area}-{forma}-{var}.svg")
+                    (dest / f"piraja-{area}-{formato}-{var}.svg").write_text(s)
+                if var in ("cor", "negativo") and formato == "horizontal":
+                    shutil.copy(dest / f"piraja-{area}-{formato}-{var}.svg", SITE_AREAS / f"piraja-{area}-{formato}-{var}.svg")
         # favicon: 7 pontos, o de cima à direita na cor da área
         for fundo in ("papel", "mata"):
             f = (IV / f"favicon/piraja-favicon-{fundo}.svg").read_text()
             if area != "entero":
-                f = f.replace(COBRE, cor).replace(COBRE_CLARO, claro)
+                f = trocar_positivos(f, area, "cor" if fundo == "papel" else "negativo")
             out = IV / f"favicon/piraja-{area}-favicon-{fundo}.svg"
             out.write_text(f)
             if fundo == "papel":
@@ -191,6 +254,16 @@ def _pictogramas():
     p["fungi"] = (f'<path d="M7 42.5h34" {_T}/>'
                   f'<path d="M24 42.5V25.6" {_T}/>'
                   f'<circle cx="24" cy="20" r="5.6" {_T}/>' + conidios)
+    # Entomo — carrapato (vetor e ectoparasito): idiossoma, escudo, capítulo e quatro pares de patas
+    patas = ""
+    for d in ("M15.6 21 L9.5 17 L7.5 12", "M15.1 25 L8.5 23.5 L5.5 20", "M15.3 29.5 L8.5 31 L5.5 35.5", "M16.6 33.5 L11 38 L10 42.5"):
+        patas += f'<path d="{d}" {_T}/>'
+        espelho = re.sub(r"([ML])([\d.]+)", lambda m: f"{m[1]}{48 - float(m[2]):g}", d)
+        patas += f'<path d="{espelho}" {_T}/>'
+    p["entomo"] = (patas +
+                   f'<ellipse cx="24" cy="27.5" rx="8.6" ry="10.8" {_T}/>'
+                   '<path d="M17.8 21.6c1-3.4 3.4-5 6.2-5s5.2 1.6 6.2 5c-1.4 3-3.6 4.6-6.2 4.6s-4.8-1.6-6.2-4.6z" fill="{a}"/>'
+                   f'<path d="M21.8 15.6 22.6 11.2h2.8l.8 4.4" {_T}/>')
     return p
 
 
