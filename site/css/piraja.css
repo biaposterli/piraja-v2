@@ -377,6 +377,7 @@ table.pj-calor { border-collapse: separate; border-spacing: 2px; font-size: 12.5
 .pj-barra { transition: width .2s ease, padding .2s ease; }
 .pj-main { transition: margin-left .2s ease; }
 .pj-barra .marca { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pj-barra .marca .marca-link, .pj-topo-movel .marca-link { display: block; border-radius: 8px; }
 .pj-barra .marca .marca-simbolo { display: none; width: 36px; height: 36px; border-radius: 9px; }
 .pj-recolher { flex: 0 0 auto; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; border: 1px solid rgba(244, 241, 234, .22);
   background: transparent; color: rgba(244, 241, 234, .8); cursor: pointer; }

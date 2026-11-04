@@ -20,8 +20,10 @@ for (const f of lista) ok(f === "" || existsSync(path.join(SITE, f)), `arquivo d
 for (const js of readdirSync(path.join(SITE, "js")).filter((f) => f.endsWith(".js"))) {
   ok(lista.includes(`js/${js}`), `sw.js guarda js/${js} (acrescente em ARQUIVOS_NUCLEO e aumente VERSAO)`);
 }
-const html = readFileSync(path.join(SITE, "index.html"), "utf8");
-ok(html.includes('rel="manifest"') && html.includes("apple-touch-icon"), "index.html aponta manifesto e ícone do iPhone");
+const html = readFileSync(path.join(SITE, "entero.html"), "utf8");
+ok(html.includes('rel="manifest"') && html.includes("apple-touch-icon"), "entero.html aponta manifesto e ícone do iPhone");
+const inicio = readFileSync(path.join(SITE, "index.html"), "utf8");
+ok(inicio.includes('rel="manifest"') && inicio.includes('href="entero.html"'), "index.html (página inicial) aponta manifesto e leva ao Entero");
 
 if (falhas) { console.log(`${falhas} FALHA(S)`); process.exit(1); }
 console.log("TODAS AS VERIFICAÇÕES DO APP PASSARAM");
