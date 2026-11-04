@@ -195,7 +195,8 @@ function abaGeral(m) {
     }
     if (av.length) h += `<div class="pj-legenda">Atenção: ${esc(av.join("; "))}.</div>`;
     h += `<div style="margin-top:14px"><label class="pj-toggle" data-dica="Mapa de prevalência por município ou bairro de residência, no padrão cartográfico (para artigo) e interativo. Opcional.">` +
-      `<input type="checkbox" id="mapa-on"> ${icones.mapa()} Gerar mapa</label></div><div id="painel-mapa"></div></div>`;
+      `<input type="checkbox" id="mapa-on"> ${icones.mapa()} Gerar mapa</label></div>` +
+      `<p class="pj-legenda pj-status-mapas" data-status-mapas hidden></p><div id="painel-mapa"></div></div>`;
   }
   return h;
 }

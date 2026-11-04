@@ -141,35 +141,65 @@ function ligarAvisoOffline() {
   setTimeout(() => mostrarAvisoOffline(), 600);
 }
 
-/** Baixa e guarda (pelo service worker) as malhas de todos os estados para mapas sem internet. */
-async function baixarMapas(botao) {
-  const st = $("#mapas-status");
-  try {
-    // geo/arquivos.json lista as malhas que existem; a malha "detalhe" (51 MB, usada só
-    // no recorte de um município) fica de fora e é guardada quando for usada
-    const lista = await (await fetch("geo/arquivos.json")).json();
-    const urls = ["geo/arquivos.json", "geo/ufs_2025.geojson.gz", "geo/municipios_indice.json.gz",
-      "vendor/shp.min.js", "vendor/proj4.js", "vendor/polylabel.js",
-      ...lista.filter((f) => !f.startsWith("malha_municipal_detalhe/")).map((f) => `geo/${f}`)];
-    let feitos = 0, ok = 0;
-    if (botao) botao.disabled = true;
-    const fila = [...urls];
-    const trabalhar = async () => {
-      while (fila.length) {
-        const u = fila.shift();
-        try { const r = await fetch(u); if (r.ok) { await r.arrayBuffer(); ok++; } } catch { /* arquivo que não existe para a UF */ }
-        feitos++;
-        if (st) st.textContent = `Baixando os mapas… ${Math.round(100 * feitos / urls.length)}%`;
+// Todas as malhas dos mapas (municípios, municípios em detalhe, bairros, contornos)
+// e as bibliotecas que os mapas usam: com elas guardadas, qualquer visualização do
+// mapa funciona sem internet, sem precisar abrir cada uma antes.
+const CACHE_MAPAS = "piraja-mapas"; // o mesmo nome usado em sw.js
+let _guardando = null;
+
+/** Guarda neste aparelho tudo o que os mapas usam. Só baixa o que ainda falta. */
+function guardarMalhas() {
+  if (_guardando) return _guardando;
+  if (!("caches" in window)) return Promise.resolve({ ok: false, faltam: -1 });
+  _guardando = (async () => {
+    const st = () => document.querySelectorAll("[data-status-mapas]");
+    const escrever = (t) => { for (const el of st()) { el.hidden = false; el.textContent = t; } };
+    try {
+      const lista = await (await fetch("geo/arquivos.json")).json();
+      const urls = ["geo/arquivos.json", "vendor/shp.min.js", "vendor/proj4.js", "vendor/polylabel.js", ...lista.map((f) => `geo/${f}`)];
+      const cache = await caches.open(CACHE_MAPAS);
+      const faltando = [];
+      for (const u of urls) if (!(await caches.match(u))) faltando.push(u);
+      if (!faltando.length) {
+        gravarPref("piraja.offlinePronto", "1");
+        escrever("Mapas guardados neste aparelho: todas as visualizações funcionam sem internet.");
+        return { ok: true, faltam: 0 };
       }
-    };
-    await Promise.all([trabalhar(), trabalhar(), trabalhar(), trabalhar()]);
-    if (st) st.textContent = `Pronto: ${ok} arquivos de mapa guardados neste aparelho.`;
-    toast("Mapas de todos os estados guardados para uso sem internet.");
-  } catch (e) {
-    if (st) st.textContent = `Não foi possível baixar os mapas agora (${e.message || e}). Confira a conexão.`;
-  } finally {
-    if (botao) botao.disabled = false;
-  }
+      let feitos = 0, falhas = 0;
+      const fila = [...faltando];
+      const trabalhar = async () => {
+        while (fila.length) {
+          const u = fila.shift();
+          try {
+            const r = await fetch(u);
+            if (r.ok) await cache.put(u, r); else falhas++;
+          } catch { falhas++; }
+          feitos++;
+          escrever(`Guardando os mapas para uso sem internet… ${Math.round(100 * feitos / faltando.length)}%`);
+        }
+      };
+      await Promise.all([trabalhar(), trabalhar(), trabalhar(), trabalhar()]);
+      if (falhas) {
+        escrever(`Faltaram ${falhas} arquivo(s) de mapa (conexão instável). Gere o mapa de novo com internet para completar.`);
+        return { ok: false, faltam: falhas };
+      }
+      gravarPref("piraja.offlinePronto", "1");
+      escrever("Mapas guardados neste aparelho: todas as visualizações funcionam sem internet.");
+      toast("Pronto: os mapas de todos os estados estão guardados. O Pirajá já pode ser usado sem internet.", 5500);
+      return { ok: true, faltam: 0 };
+    } catch (e) {
+      escrever(`Não foi possível guardar os mapas agora (${e.message || e}).`);
+      return { ok: false, faltam: -1 };
+    } finally {
+      _guardando = null;
+    }
+  })();
+  return _guardando;
+}
+
+async function baixarMapas(botao) {
+  if (botao) botao.disabled = true;
+  try { await guardarMalhas(); } finally { if (botao) botao.disabled = false; }
 }
 
 // ===================================================================== app instalável
@@ -776,11 +806,15 @@ async function alternarMapa(ligado) {
     const { montarPainelMapa } = await import("./mapa-painel.js");
     await montarPainelMapa(painel, S.resultado.metrics, (fig) => {
       S.mapa = fig; atualizarNotaMapa();
-      if (fig && S.arquivo?.teste) {
-        gravarPref("piraja.offlinePronto", "1");
-        toast("Pronto: o Pirajá já pode ser usado sem internet neste aparelho.", 5000);
-      }
     });
+    // na primeira geração do mapa, guarda todas as malhas (em segundo plano)
+    // (com "economia de dados" ligada no celular, não baixa sozinho: só pelo botão da Ajuda)
+    if (navigator.connection?.saveData) {
+      for (const el of document.querySelectorAll("#relatorio [data-status-mapas]")) {
+        el.hidden = false;
+        el.textContent = "Economia de dados ligada: os mapas não foram guardados para uso sem internet. Para guardá-los (≈ 72 MB), use Ajuda › Usar sem internet.";
+      }
+    } else if (navigator.onLine !== false) guardarMalhas();
   } catch (e) {
     console.error(e);
     painel.innerHTML = alerta("erro", `Não foi possível abrir os mapas (${esc(e.message || e)}).`);

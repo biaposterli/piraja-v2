@@ -128,6 +128,8 @@ export async function montarPainelMapa(raiz, metrics, aoGerarFigura) {
       const cv = await svgParaCanvas(svg, 2);
       if (seq !== E.seq) return;
       const png = await canvasParaPng(cv, 300);
+      // a pessoa pode ter trocado a visualização enquanto a figura era montada
+      if (seq !== E.seq || !saida.querySelector(".pj-figura")) return;
       const url = URL.createObjectURL(new Blob([png], { type: "image/png" }));
       saida.querySelector(".pj-figura").innerHTML = `<img src="${url}" alt="${esc(r.titulo)}">`;
       const bPng = saida.querySelector('[data-mapa="png"]'), bTif = saida.querySelector('[data-mapa="tiff"]');
@@ -136,8 +138,10 @@ export async function montarPainelMapa(raiz, metrics, aoGerarFigura) {
       bTif.onclick = () => baixarBlob(new Blob([canvasParaTiff(cv, 300)], { type: "image/tiff" }), `${nomeBase}.tiff`);
       aoGerarFigura({ titulo: r.titulo, dataUrl: cv.toDataURL("image/png") });
     } catch (e) {
+      if (seq !== E.seq) return;
       console.error(e);
-      saida.querySelector(".pj-figura").innerHTML = alerta("erro", `Não foi possível preparar a figura (${esc(e.message || e)}).`);
+      const fig = saida.querySelector(".pj-figura");
+      if (fig) fig.innerHTML = alerta("erro", `Não foi possível preparar a figura (${esc(e.message || e)}).`);
     }
   }
 
