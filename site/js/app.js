@@ -46,7 +46,7 @@ const TITULOS = { inicio: "Painel de análise epidemiológica", planilha: "Envia
 let secaoAtual = "inicio";
 
 function montarNav() {
-  const botoes = (movel) => SECOES.map((s) => `<button type="button" data-ir="${s.id}"${s.precisaDados ? " data-precisa-dados" : ""}>` +
+  const botoes = (movel) => SECOES.map((s) => `<button type="button" data-ir="${s.id}"${movel ? "" : ` title="${s.nome}"`}${s.precisaDados ? " data-precisa-dados" : ""}>` +
     `${movel ? "" : s.icone()}<span>${s.nome}</span></button>` + (!movel && s.id === "relatorio" ? `<div class="pj-subnav" id="subnav" hidden></div>` : "")).join("");
   $("#nav").innerHTML = botoes(false);
   $("#mnav").innerHTML = botoes(true);
@@ -90,6 +90,86 @@ function ir(id, { rolar = true, historico = true } = {}) {
   atualizarNav();
   if (s.id === "relatorio") { montarSubnav(); desenharGraficos(); }
   if (rolar) scrollTo({ top: 0, behavior: "instant" in window ? "instant" : "auto" });
+}
+
+// ===================================================================== barra lateral recolhível
+const lerPref = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
+const gravarPref = (k, v) => { try { localStorage.setItem(k, v); } catch { /* sem armazenamento */ } };
+
+function recolherBarra(recolher, salvar = true) {
+  document.body.classList.toggle("barra-recolhida", recolher);
+  const b = $('[data-acao="recolher-barra"]');
+  if (b) {
+    b.setAttribute("aria-expanded", String(!recolher));
+    const t = recolher ? "Expandir a barra lateral" : "Recolher a barra lateral";
+    b.setAttribute("aria-label", t); b.title = t;
+  }
+  if (salvar) gravarPref("piraja.barraRecolhida", recolher ? "1" : "0");
+  setTimeout(() => desenharGraficos(), 220); // gráficos acompanham a nova largura
+}
+
+// ===================================================================== planilha de teste e uso sem internet
+const PLANILHA_TESTE = "exemplos/Planilha_Teste_Piraja.xlsx";
+
+async function abrirTeste() {
+  const d = $("#aviso-offline");
+  if (d?.open) d.close();
+  try {
+    const r = await fetch(PLANILHA_TESTE);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const arq = new File([await r.blob()], "Planilha_Teste_Piraja.xlsx", { type: XLSX_MIME });
+    ir("planilha");
+    await carregarArquivo(arq, { teste: true });
+  } catch (e) {
+    toast(`Não consegui abrir a planilha de teste (${e.message || e}). Confira a conexão.`);
+  }
+}
+
+function mostrarAvisoOffline(forcar = false) {
+  const d = $("#aviso-offline");
+  if (!d || typeof d.showModal !== "function") return;
+  if (!forcar && (lerPref("piraja.avisoOffline") === "nunca" || lerPref("piraja.offlinePronto") === "1")) return;
+  if (!d.open) d.showModal();
+}
+
+function ligarAvisoOffline() {
+  const d = $("#aviso-offline");
+  if (!d) return;
+  d.addEventListener("close", () => { if ($("#aviso-offline-nunca")?.checked) gravarPref("piraja.avisoOffline", "nunca"); });
+  // fecha ao clicar fora da caixa
+  d.addEventListener("click", (e) => { if (e.target === d) d.close(); });
+  setTimeout(() => mostrarAvisoOffline(), 600);
+}
+
+/** Baixa e guarda (pelo service worker) as malhas de todos os estados para mapas sem internet. */
+async function baixarMapas(botao) {
+  const st = $("#mapas-status");
+  try {
+    // geo/arquivos.json lista as malhas que existem; a malha "detalhe" (51 MB, usada só
+    // no recorte de um município) fica de fora e é guardada quando for usada
+    const lista = await (await fetch("geo/arquivos.json")).json();
+    const urls = ["geo/arquivos.json", "geo/ufs_2025.geojson.gz", "geo/municipios_indice.json.gz",
+      "vendor/shp.min.js", "vendor/proj4.js", "vendor/polylabel.js",
+      ...lista.filter((f) => !f.startsWith("malha_municipal_detalhe/")).map((f) => `geo/${f}`)];
+    let feitos = 0, ok = 0;
+    if (botao) botao.disabled = true;
+    const fila = [...urls];
+    const trabalhar = async () => {
+      while (fila.length) {
+        const u = fila.shift();
+        try { const r = await fetch(u); if (r.ok) { await r.arrayBuffer(); ok++; } } catch { /* arquivo que não existe para a UF */ }
+        feitos++;
+        if (st) st.textContent = `Baixando os mapas… ${Math.round(100 * feitos / urls.length)}%`;
+      }
+    };
+    await Promise.all([trabalhar(), trabalhar(), trabalhar(), trabalhar()]);
+    if (st) st.textContent = `Pronto: ${ok} arquivos de mapa guardados neste aparelho.`;
+    toast("Mapas de todos os estados guardados para uso sem internet.");
+  } catch (e) {
+    if (st) st.textContent = `Não foi possível baixar os mapas agora (${e.message || e}). Confira a conexão.`;
+  } finally {
+    if (botao) botao.disabled = false;
+  }
 }
 
 // ===================================================================== app instalável
@@ -163,6 +243,8 @@ function iniciar() {
   drop.addEventListener("drop", (e) => { const f = e.dataTransfer.files[0]; if (f) carregarArquivo(f); });
 
   montarNav();
+  if (lerPref("piraja.barraRecolhida") === "1") recolherBarra(true, false);
+  ligarAvisoOffline();
   addEventListener("popstate", () => ir(location.hash.slice(1) || "inicio", { historico: false }));
   ir(location.hash.slice(1) || "inicio", { rolar: false, historico: false });
   ligarApp();
@@ -261,6 +343,9 @@ async function aoClicar(e) {
   const acao = el.dataset.acao;
   if (el.tagName === "A") e.preventDefault();
   if (acao === "instalar") instalar();
+  else if (acao === "recolher-barra") recolherBarra(!document.body.classList.contains("barra-recolhida"));
+  else if (acao === "abrir-teste") abrirTeste();
+  else if (acao === "baixar-mapas") baixarMapas(el);
   else if (acao === "menu") {
     const aberto = document.body.classList.toggle("menu-aberto");
     el.setAttribute("aria-expanded", String(aberto));
@@ -358,7 +443,7 @@ function marcarPendente() {
 }
 
 // ===================================================================== passo 02 — arquivo
-async function carregarArquivo(file) {
+async function carregarArquivo(file, { teste = false } = {}) {
   const msgs = $("#msgs-arquivo");
   const info = $("#arquivo-info");
   msgs.innerHTML = `<div class="pj-carregando">Lendo a planilha…</div>`;
@@ -370,7 +455,7 @@ async function carregarArquivo(file) {
     if (!/\.(xlsx|xls)$/i.test(file.name)) throw new Error("envie um arquivo .xlsx ou .xls");
     const buffer = await file.arrayBuffer();
     const planilha = await lerPlanilha(buffer, file.name);
-    S.arquivo = { nome: file.name, buffer };
+    S.arquivo = { nome: file.name, buffer, teste };
     S.planilha = planilha;
     info.hidden = false;
     info.innerHTML = `<b>${esc(file.name)}</b> · ${(file.size / 1024).toFixed(0)} KB ` +
@@ -689,7 +774,13 @@ async function alternarMapa(ligado) {
   painel.innerHTML = `<div class="pj-carregando">Carregando o módulo de mapas…</div>`;
   try {
     const { montarPainelMapa } = await import("./mapa-painel.js");
-    await montarPainelMapa(painel, S.resultado.metrics, (fig) => { S.mapa = fig; atualizarNotaMapa(); });
+    await montarPainelMapa(painel, S.resultado.metrics, (fig) => {
+      S.mapa = fig; atualizarNotaMapa();
+      if (fig && S.arquivo?.teste) {
+        gravarPref("piraja.offlinePronto", "1");
+        toast("Pronto: o Pirajá já pode ser usado sem internet neste aparelho.", 5000);
+      }
+    });
   } catch (e) {
     console.error(e);
     painel.innerHTML = alerta("erro", `Não foi possível abrir os mapas (${esc(e.message || e)}).`);

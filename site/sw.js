@@ -9,7 +9,7 @@
 //                         atualizada em segundo plano.
 // Ao publicar uma versão com arquivos novos no núcleo, aumente VERSAO.
 
-const VERSAO = "piraja-v2-1";
+const VERSAO = "piraja-v2-2";
 const NUCLEO = `${VERSAO}-nucleo`;
 const EXTRAS = `${VERSAO}-extras`;
 
@@ -24,6 +24,7 @@ const ARQUIVOS_NUCLEO = [
   "./brand/parceiros/lapahv.png", "./brand/parceiros/ufrn.png", "./brand/app/icone-192.png", "./brand/app/icone-512.png",
   "./brand/fonts/Fraunces-Regular.ttf", "./brand/fonts/Fraunces-SemiBold.ttf",
   "./brand/fonts/InstrumentSans-Regular.ttf", "./brand/fonts/InstrumentSans-SemiBold.ttf",
+  "./exemplos/Planilha_Teste_Piraja.xlsx",
 ];
 
 self.addEventListener("install", (ev) => {

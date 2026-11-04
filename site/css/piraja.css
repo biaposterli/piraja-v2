@@ -372,3 +372,46 @@ table.pj-calor { border-collapse: separate; border-spacing: 2px; font-size: 12.5
   .pj-topbar .nome { font-size: 20px; }
   .pj-topbar .sub { display: none; }
 }
+
+/* ------------------------------------------------------------- barra lateral recolhível */
+.pj-barra { transition: width .2s ease, padding .2s ease; }
+.pj-main { transition: margin-left .2s ease; }
+.pj-barra .marca { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pj-barra .marca .marca-simbolo { display: none; width: 36px; height: 36px; border-radius: 9px; }
+.pj-recolher { flex: 0 0 auto; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; border: 1px solid rgba(244, 241, 234, .22);
+  background: transparent; color: rgba(244, 241, 234, .8); cursor: pointer; }
+.pj-recolher:hover { background: rgba(244, 241, 234, .1); color: var(--papel); }
+.pj-recolher svg { transition: transform .2s; }
+@media (min-width: 901px) {
+  body.barra-recolhida { --barra: 76px; }
+  body.barra-recolhida .pj-barra { padding-left: 12px; padding-right: 12px; overflow-x: hidden; }
+  body.barra-recolhida .pj-barra .marca { flex-direction: column; gap: 12px; }
+  body.barra-recolhida .pj-barra .marca-inteira { display: none; }
+  body.barra-recolhida .pj-barra .marca-simbolo { display: block; }
+  body.barra-recolhida .pj-recolher svg { transform: rotate(180deg); }
+  body.barra-recolhida .pj-nav > button { justify-content: center; padding: 11px 0; }
+  body.barra-recolhida .pj-nav > button span,
+  body.barra-recolhida .pj-subnav,
+  body.barra-recolhida .pj-arquivo-atual,
+  body.barra-recolhida .pj-barra .privado p,
+  body.barra-recolhida .pj-barra-parceiros,
+  body.barra-recolhida .pj-barra .pj-instalar,
+  body.barra-recolhida .pj-offline { display: none !important; }
+  body.barra-recolhida .pj-barra .privado { justify-content: center; padding: 10px 0; }
+}
+
+/* ------------------------------------------------------------- planilha de teste e aviso */
+.pj-teste { display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap; background: var(--folha-tinta); border-color: #CFE2D8; }
+.pj-teste h2 { margin: 4px 0 6px; font-size: 20px; }
+.pj-teste p { margin: 0; color: var(--tinta-suave); max-width: 640px; }
+.pj-teste .pj-btns { display: flex; gap: 10px; flex-wrap: wrap; }
+a.pj-btn.sec { text-decoration: none; }
+.pj-dialogo { border: 0; border-radius: 16px; padding: 0; max-width: min(560px, calc(100vw - 32px)); background: var(--superficie); color: var(--tinta);
+  box-shadow: 0 24px 60px rgba(17, 72, 61, .28); }
+.pj-dialogo::backdrop { background: rgba(27, 36, 33, .45); }
+.pj-dialogo form { padding: 24px 26px 20px; display: grid; gap: 10px; }
+.pj-dialogo h2 { margin: 0; font-size: 22px; }
+.pj-dialogo p { margin: 0; color: var(--tinta-suave); }
+.pj-dialogo .pj-btns { display: flex; gap: 10px; flex-wrap: wrap; margin: 4px 0; }
+.pj-dialogo-rodape { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; border-top: 1px solid var(--linha); padding-top: 12px; margin-top: 4px; }
+.pj-dialogo-rodape .pj-check { margin: 0; font-size: 14px; }

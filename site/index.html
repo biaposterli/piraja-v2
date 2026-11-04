@@ -25,7 +25,13 @@
 
   <!-- barra lateral (computador) -->
   <aside class="pj-barra" id="barra" aria-label="Navegação do Pirajá">
-    <div class="marca"><img src="brand/piraja-entero-negativo.svg" alt="Pirajá Entero"></div>
+    <div class="marca">
+      <img class="marca-inteira" src="brand/piraja-entero-negativo.svg" alt="Pirajá Entero">
+      <img class="marca-simbolo" src="brand/piraja-favicon.svg" alt="Pirajá" width="36" height="36">
+      <button class="pj-recolher" type="button" data-acao="recolher-barra" aria-label="Recolher a barra lateral" aria-expanded="true" title="Recolher a barra lateral">
+        <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M12.5 4.5 7 10l5.5 5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
     <nav class="pj-nav" id="nav" aria-label="Seções"></nav>
     <div class="pj-barra-rodape">
       <div class="pj-arquivo-atual" id="arquivo-atual" hidden></div>
@@ -97,6 +103,17 @@
         <div class="pj-arquivo" id="arquivo-info" hidden></div>
         <div id="msgs-arquivo"></div>
       </section>
+      <section class="pj-passo pj-teste" id="planilha-teste">
+        <div>
+          <span class="pj-eyebrow">Planilha de teste</span>
+          <h2>Quer experimentar antes?</h2>
+          <p>Uma planilha com dados fictícios — 1.200 pacientes de 42 municípios, com idade, bairro e município — para conhecer o Pirajá e para preparar o uso sem internet.</p>
+        </div>
+        <div class="pj-btns">
+          <button class="pj-btn" type="button" data-acao="abrir-teste">Abrir a planilha de teste</button>
+          <a class="pj-btn sec" href="exemplos/Planilha_Teste_Piraja.xlsx" download data-icone="baixar-claro">Baixar (.xlsx)</a>
+        </div>
+      </section>
     </section>
 
     <!-- ===================================================== configurar -->
@@ -133,6 +150,21 @@
           <h2>Classificação clínica</h2>
           <p>Você define em Configurar se cada parasito é <strong>patogênico</strong> ou <strong>comensal</strong>. O sistema sugere uma classificação padrão — por exemplo, <em>Entamoeba histolytica/dispar</em> vem como patogênica, já que a diferenciação morfológica entre as duas formas não é possível no laboratório; <em>Blastocystis</em> vem sem classificação.</p>
         </section>
+        <section class="pj-passo" id="sem-internet">
+          <h2>Usar sem internet</h2>
+          <p>O app guarda neste aparelho o que já foi usado com a internet ligada. Para deixá-lo pronto, faça isto uma vez, com internet:</p>
+          <ol class="pj-lista">
+            <li>Abra a <strong>planilha de teste</strong>.</li>
+            <li>No Relatório, aba <strong>Visão geral</strong>, ligue <strong>Gerar mapa</strong> e espere o mapa aparecer.</li>
+          </ol>
+          <p>Se for fazer mapas de estados que não estão na planilha de teste, baixe também os mapas de todos os estados.</p>
+          <div class="pj-btns">
+            <button class="pj-btn" type="button" data-acao="abrir-teste">Abrir a planilha de teste</button>
+            <button class="pj-btn sec" type="button" data-acao="baixar-mapas">Baixar os mapas de todos os estados (≈ 19 MB)</button>
+            <a class="pj-btn sec" href="exemplos/Planilha_Teste_Piraja.xlsx" download>Baixar a planilha de teste</a>
+          </div>
+          <p class="pj-legenda" id="mapas-status"></p>
+        </section>
         <section class="pj-passo" id="como-instalar">
           <h2>Instalar como app</h2>
           <p>O Pirajá pode ficar na tela inicial do celular ou no computador, como um aplicativo: abre em tela cheia e funciona sem internet depois da primeira visita. Os dados continuam só no seu aparelho.</p>
@@ -158,6 +190,27 @@
       <p>Site desenvolvido com o auxílio do Claude, assistente de inteligência artificial da Anthropic.</p>
     </footer>
   </main>
+
+  <dialog class="pj-dialogo" id="aviso-offline" aria-labelledby="aviso-offline-titulo">
+    <form method="dialog">
+      <span class="pj-eyebrow">Antes de usar sem internet</span>
+      <h2 id="aviso-offline-titulo">Prepare o Pirajá uma vez, com internet</h2>
+      <p>Para o app funcionar sem internet, rode a <strong>planilha de teste</strong> uma vez e <strong>gere o mapa</strong>. Assim ele guarda neste aparelho tudo o que precisa, inclusive as malhas dos mapas.</p>
+      <ol class="pj-lista">
+        <li>Clique em <strong>Abrir a planilha de teste</strong> (dados fictícios: 1.200 pacientes, 42 municípios, com idade).</li>
+        <li>No Relatório, aba <strong>Visão geral</strong>, ligue <strong>Gerar mapa</strong> e espere o mapa aparecer.</li>
+      </ol>
+      <div class="pj-btns">
+        <button class="pj-btn" type="button" data-acao="abrir-teste">Abrir a planilha de teste</button>
+        <a class="pj-btn sec" href="exemplos/Planilha_Teste_Piraja.xlsx" download>Baixar a planilha</a>
+      </div>
+      <p class="pj-legenda">A planilha de teste também fica na aba <b>Planilha</b>, e estas instruções na aba <b>Ajuda</b>.</p>
+      <div class="pj-dialogo-rodape">
+        <label class="pj-check"><input type="checkbox" id="aviso-offline-nunca"><span>Não mostrar novamente</span></label>
+        <button class="pj-btn sec" value="fechar">Agora não</button>
+      </div>
+    </form>
+  </dialog>
 
   <div class="pj-dica" id="dica" hidden></div>
   <noscript><div class="pj-toast">O Pirajá precisa de JavaScript ativado no navegador.</div></noscript>
