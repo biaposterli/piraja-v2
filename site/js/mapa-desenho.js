@@ -473,21 +473,92 @@ export function figuraEstatica(cena) {
 // ---------------------------------------------------------------------------
 // exportação: PNG e TIFF em 300 dpi (fontes embutidas no SVG)
 // ---------------------------------------------------------------------------
-let _fonteB64 = null;
-async function fonteBase64() {
-  if (_fonteB64) return _fonteB64;
-  const r = await fetch("brand/fonts/InstrumentSans-Regular.ttf");
-  const b = new Uint8Array(await r.arrayBuffer());
-  let s = "";
-  for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000));
-  _fonteB64 = btoa(s);
-  return _fonteB64;
+// O texto NÃO vai dentro da imagem SVG: o Safari (iPhone, iPad e Mac) desenha a
+// imagem antes de carregar a fonte embutida no SVG, e todo o texto sai invisível.
+// Por isso o SVG é desenhado sem os <text>, e cada texto é escrito depois direto
+// no canvas, com a fonte do Pirajá já carregada (FontFace) — igual em todos os
+// navegadores.
+const FONTE_FIG = "Piraja Figura";
+let _fontesFig = null;
+function carregarFontesFigura() {
+  if (_fontesFig) return _fontesFig;
+  _fontesFig = (async () => {
+    const faces = [["brand/fonts/InstrumentSans-Regular.ttf", "400"], ["brand/fonts/InstrumentSans-SemiBold.ttf", "600"]];
+    for (const [url, peso] of faces) {
+      const buf = await (await fetch(url)).arrayBuffer();
+      const f = new FontFace(FONTE_FIG, buf, { weight: peso });
+      await f.load();
+      document.fonts.add(f);
+    }
+  })().catch((e) => { _fontesFig = null; throw e; });
+  return _fontesFig;
+}
+
+const num = (v, padrao = 0) => { const n = parseFloat(v); return Number.isFinite(n) ? n : padrao; };
+const ALINHA = { start: "left", middle: "center", end: "right" };
+const LINHA_BASE = { auto: "alphabetic", alphabetic: "alphabetic", central: "middle", middle: "middle", hanging: "hanging",
+  "text-before-edge": "top", "text-after-edge": "bottom", ideographic: "ideographic", mathematical: "middle" };
+
+/** Lê os <text> do SVG (com rotação e recorte dos grupos acima) e os tira do SVG. */
+function extrairTextos(doc) {
+  const recortes = new Map();
+  for (const cp of doc.querySelectorAll("clipPath")) {
+    const r = cp.querySelector("rect");
+    if (r) recortes.set(cp.getAttribute("id"), { x: num(r.getAttribute("x")), y: num(r.getAttribute("y")), w: num(r.getAttribute("width")), h: num(r.getAttribute("height")) });
+  }
+  const herdado = (el, attr) => {
+    for (let n = el; n && n.getAttribute; n = n.parentNode) { const v = n.getAttribute(attr); if (v !== null) return v; }
+    return null;
+  };
+  const textos = [];
+  for (const t of [...doc.querySelectorAll("text")]) {
+    let recorte = null;
+    for (let n = t.parentNode; n && n.getAttribute; n = n.parentNode) {
+      const m = /url\(#([^)]+)\)/.exec(n.getAttribute("clip-path") || "");
+      if (m && recortes.has(m[1])) { recorte = recortes.get(m[1]); break; }
+    }
+    const rot = /rotate\(\s*([-\d.]+)(?:[\s,]+([-\d.]+)[\s,]+([-\d.]+))?\s*\)/.exec(t.getAttribute("transform") || "");
+    textos.push({
+      texto: t.textContent, x: num(t.getAttribute("x")), y: num(t.getAttribute("y")),
+      tam: num(herdado(t, "font-size"), 12), peso: num(herdado(t, "font-weight"), 400) >= 600 ? "600" : "400",
+      fill: herdado(t, "fill") || "#000", fillOp: num(herdado(t, "fill-opacity"), 1), op: num(herdado(t, "opacity"), 1),
+      anc: herdado(t, "text-anchor") || "start", base: herdado(t, "dominant-baseline") || "auto",
+      stroke: t.getAttribute("stroke"), sw: num(t.getAttribute("stroke-width"), 0), strokeOp: num(t.getAttribute("stroke-opacity"), 1),
+      rot: rot ? { a: num(rot[1]), cx: num(rot[2], 0), cy: num(rot[3], 0) } : null, recorte,
+    });
+    t.remove();
+  }
+  return textos;
+}
+
+function escreverTextos(ctx, textos, escala) {
+  for (const t of textos) {
+    if (!t.texto) continue;
+    ctx.save();
+    ctx.scale(escala, escala);
+    if (t.recorte) { ctx.beginPath(); ctx.rect(t.recorte.x, t.recorte.y, t.recorte.w, t.recorte.h); ctx.clip(); }
+    if (t.rot) { ctx.translate(t.rot.cx, t.rot.cy); ctx.rotate((t.rot.a * Math.PI) / 180); ctx.translate(-t.rot.cx, -t.rot.cy); }
+    ctx.font = `${t.peso} ${t.tam}px "${FONTE_FIG}", sans-serif`;
+    ctx.textAlign = ALINHA[t.anc] || "left";
+    ctx.textBaseline = LINHA_BASE[t.base] || "alphabetic";
+    if (t.stroke && t.stroke !== "none" && t.sw > 0) { // halo branco, desenhado antes (paint-order: stroke)
+      ctx.globalAlpha = t.op * t.strokeOp;
+      ctx.lineJoin = "round"; ctx.lineWidth = t.sw; ctx.strokeStyle = t.stroke;
+      ctx.strokeText(t.texto, t.x, t.y);
+    }
+    ctx.globalAlpha = t.op * t.fillOp;
+    ctx.fillStyle = t.fill;
+    ctx.fillText(t.texto, t.x, t.y);
+    ctx.restore();
+  }
 }
 
 export async function svgParaCanvas(svg, escala = 2) {
-  const css = `<style>@font-face{font-family:"${FONTE}";src:url(data:font/ttf;base64,${await fonteBase64()}) format("truetype");}</style>`;
-  const comFonte = svg.replace(/(<svg[^>]*>)/, `$1<defs>${css}</defs>`);
-  const url = URL.createObjectURL(new Blob([comFonte], { type: "image/svg+xml" }));
+  await carregarFontesFigura();
+  const doc = new DOMParser().parseFromString(svg, "image/svg+xml");
+  const textos = extrairTextos(doc);
+  const semTexto = new XMLSerializer().serializeToString(doc.documentElement);
+  const url = URL.createObjectURL(new Blob([semTexto], { type: "image/svg+xml" }));
   try {
     const img = new Image();
     img.decoding = "sync";
@@ -498,6 +569,7 @@ export async function svgParaCanvas(svg, escala = 2) {
     ctx.fillStyle = "#FFFFFF";
     ctx.fillRect(0, 0, cv.width, cv.height);
     ctx.drawImage(img, 0, 0, cv.width, cv.height);
+    escreverTextos(ctx, textos, cv.width / FW);
     return cv;
   } finally { URL.revokeObjectURL(url); }
 }
