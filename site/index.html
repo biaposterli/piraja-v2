@@ -3,14 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Pirajá · Painel de análise epidemiológica</title>
-  <meta name="description" content="Pirajá · Entero — transforma a planilha de coleta em relatório epidemiológico de parasitos intestinais: prevalência por paciente com IC 95%, comparação entre métodos, faixa etária, mapas e relatório em PDF e Excel. Tudo roda no seu aparelho.">
+  <title>Pirajá · Análise epidemiológica de exames laboratoriais</title>
+  <meta name="description" content="Pirajá transforma a planilha de exames laboratoriais em análise epidemiológica: prevalência com IC 95%, comparação entre métodos, faixa etária, território e relatórios em PDF e Excel. Tudo roda no seu aparelho.">
   <meta name="theme-color" content="#11483D">
   <meta name="application-name" content="Pirajá">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Pirajá">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="brand/piraja-favicon.svg" type="image/svg+xml">
   <link rel="alternate icon" href="brand/piraja-favicon.png" type="image/png">
@@ -18,201 +17,104 @@
   <link rel="preload" href="brand/fonts/InstrumentSans-Regular.ttf" as="font" type="font/ttf" crossorigin>
   <link rel="preload" href="brand/fonts/Fraunces-SemiBold.ttf" as="font" type="font/ttf" crossorigin>
   <link rel="stylesheet" href="css/piraja.css">
-  <script type="module" src="js/app.js"></script>
+  <link rel="stylesheet" href="css/inicio.css">
+  <script type="module" src="js/inicio.js"></script>
 </head>
-<body>
-  <a class="pj-pular" href="#conteudo">Pular para o conteúdo</a>
+<body class="pi">
+  <a class="pj-pular" href="#areas">Pular para as áreas</a>
 
-  <!-- barra lateral (computador) -->
-  <aside class="pj-barra" id="barra" aria-label="Navegação do Pirajá">
-    <div class="marca">
-      <img class="marca-inteira" src="brand/piraja-entero-negativo.svg" alt="Pirajá Entero">
-      <img class="marca-simbolo" src="brand/piraja-favicon.svg" alt="Pirajá" width="36" height="36">
-      <button class="pj-recolher" type="button" data-acao="recolher-barra" aria-label="Recolher a barra lateral" aria-expanded="true" title="Recolher a barra lateral">
-        <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M12.5 4.5 7 10l5.5 5.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </button>
+  <header class="pi-topo">
+    <a class="pi-marca" href="./"><img src="brand/piraja-horizontal-cor.svg" alt="Pirajá" width="190" height="73"></a>
+    <div class="pi-realizacao" aria-label="Realização">
+      <span>Realização</span>
+      <img src="brand/parceiros/lapahv.png" alt="LaPaHV" width="41" height="50">
+      <img src="brand/parceiros/ufrn.png" alt="UFRN" width="103" height="33">
     </div>
-    <nav class="pj-nav" id="nav" aria-label="Seções"></nav>
-    <div class="pj-barra-rodape">
-      <div class="pj-arquivo-atual" id="arquivo-atual" hidden></div>
-      <button class="pj-btn pj-instalar" type="button" data-acao="instalar" hidden>Instalar o app</button>
-      <div class="privado" data-icone="cadeado">
-        <p><strong>Seus dados ficam com você.</strong> A planilha é lida e analisada no seu aparelho — nada é enviado a um servidor.</p>
-      </div>
-      <p class="pj-offline" id="offline" hidden>Disponível sem internet</p>
-      <div class="pj-barra-parceiros" aria-label="Realização">
-        <span>Realização</span>
-        <div><img src="brand/parceiros/lapahv.png" alt="LaPaHV" width="41" height="50"><img src="brand/parceiros/ufrn.png" alt="UFRN" width="103" height="33"></div>
-      </div>
-    </div>
-  </aside>
-
-  <!-- topo e navegação (celular) -->
-  <header class="pj-topo-movel">
-    <img src="brand/piraja-entero-cor.png" alt="Pirajá Entero" height="30">
-    <button class="pj-btn sec peq pj-instalar" type="button" data-acao="instalar" hidden>Instalar</button>
   </header>
-  <nav class="pj-mnav" id="mnav" aria-label="Seções"></nav>
 
-  <main class="pj-main" id="conteudo">
-    <header class="pj-topbar">
-      <h1 class="nome" id="titulo-secao">Painel de análise epidemiológica</h1>
-      <div class="sub">Pirajá · Entero · parasitos intestinais</div>
-    </header>
+  <main class="pi-main">
+    <section class="pi-hero">
+      <div class="pi-hero-texto">
+        <span class="pj-eyebrow">Plataforma de análise epidemiológica</span>
+        <h1>Exames de laboratório, transformados em epidemiologia.</h1>
+        <p>Envie a planilha da sua coleta e receba a prevalência com IC 95%, a comparação entre métodos, a análise por faixa etária e território e o relatório pronto em PDF e Excel.</p>
+        <p class="pi-privado" data-icone="cadeado"><span><strong>Seus dados ficam com você.</strong> A planilha é lida e analisada no seu aparelho — nada é enviado a um servidor.</span></p>
+      </div>
+      <img class="pi-hero-simbolo" src="brand/piraja-simbolo-negativo.svg" alt="" width="220" height="220">
+    </section>
 
-    <!-- ===================================================== início -->
-    <section data-view="inicio">
-      <section class="pj-hero" id="hero">
-        <div>
-          <h2>Seus dados de coleta, transformados em relatório epidemiológico.</h2>
-          <p>Envie a planilha da coleta e receba a prevalência de parasitos intestinais por paciente, a comparação entre métodos, a análise por faixa etária e território e o relatório pronto em PDF e Excel.</p>
-          <div class="pj-btns" style="margin-top:18px">
-            <button class="pj-btn claro" type="button" data-ir="planilha" data-icone="upload">Enviar planilha</button>
-            <button class="pj-btn contorno" type="button" data-acao="baixar-modelo" data-icone="baixar-claro">Baixar modelo (.xlsx)</button>
+    <section class="pi-areas" id="areas" aria-labelledby="areas-titulo">
+      <div class="pi-cabeca">
+        <span class="pj-eyebrow">Áreas de análise</span>
+        <h2 id="areas-titulo">Escolha a área do seu exame</h2>
+      </div>
+
+      <a class="pi-area pi-entero pi-ativa" href="entero.html">
+        <div class="pi-ativa-marca">
+          <div class="pi-area-topo">
+            <img class="pi-picto" src="brand/areas/piraja-entero-pictograma.svg" alt="" width="72" height="72">
+            <span class="pi-status disponivel">Disponível</span>
           </div>
+          <img class="pi-assinatura" src="brand/areas/piraja-entero-horizontal-cor.svg" alt="Pirajá Entero" width="196" height="88">
+          <h3>Parasitos intestinais</h3>
+          <p>Helmintos e protozoários no exame parasitológico de fezes e no método de Graham.</p>
+          <span class="pi-ir">Abrir o Entero <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M4 10h11m-4.5-4.5L15 10l-4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
         </div>
-      </section>
-
-      <section class="pj-como">
-        <span class="pj-eyebrow">Como funciona</span>
-        <div class="pj-etapas" id="etapas"></div>
-        <div class="pj-nota-amostra">
-          <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><circle cx="9" cy="9" r="6.5" fill="none" stroke="#4E5B55" stroke-width="1.6" stroke-dasharray="2.4 2.4"/></svg>
-          <span>Amostras insuficientes nunca entram no cálculo como negativas: elas ficam fora do denominador.</span>
-        </div>
-      </section>
-
-      <section class="pj-passo" id="passo-1">
-        <div class="pj-step"><div class="badge">1</div><h2>Baixe o modelo de planilha</h2></div>
-        <p>Um arquivo .xlsx com as colunas certas, os valores aceitos em cada uma, a lista de espécies reconhecidas e uma linha de exemplo — para preencher com os dados da sua coleta. Traz uma coluna para cada método que o sistema reconhece; apague as que o seu laboratório não usa antes de enviar.</p>
-        <button class="pj-btn" type="button" data-acao="baixar-modelo" data-icone="baixar">Baixar modelo (.xlsx)</button>
-      </section>
-    </section>
-
-    <!-- ===================================================== planilha -->
-    <section data-view="planilha" hidden>
-      <section class="pj-passo" id="passo-2">
-        <div class="pj-step"><div class="badge">2</div><h2>Envie a planilha preenchida</h2></div>
-        <p>Aceita o modelo baixado no Início, preenchido com uma linha por coleta (P1, P2, P3...) de cada paciente. Não precisa conter todos os métodos do modelo — só os que o laboratório efetivamente utilizou. Se a planilha trouxer as abas de configuração (Config_*), elas já vêm aplicadas.</p>
-        <label class="pj-drop" id="drop">
-          <input type="file" id="arquivo" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel">
-          <span data-icone="upload"></span>
-          <strong>Arraste a planilha para cá ou clique para escolher</strong>
-          <small>.xlsx ou .xls · o arquivo é lido no seu aparelho e não sai dele</small>
-        </label>
-        <div class="pj-arquivo" id="arquivo-info" hidden></div>
-        <div id="msgs-arquivo"></div>
-      </section>
-      <section class="pj-passo pj-teste" id="planilha-teste">
-        <div>
-          <span class="pj-eyebrow">Planilha de teste</span>
-          <h2>Quer experimentar antes?</h2>
-          <p>Uma planilha com dados fictícios — 1.200 pacientes de 42 municípios, com idade, bairro e município — para conhecer o Pirajá e para preparar o uso sem internet.</p>
-        </div>
-        <div class="pj-btns">
-          <button class="pj-btn" type="button" data-acao="abrir-teste">Abrir a planilha de teste</button>
-          <a class="pj-btn sec" href="exemplos/Planilha_Teste_Piraja.xlsx" download data-icone="baixar-claro">Baixar (.xlsx)</a>
-        </div>
-      </section>
-    </section>
-
-    <!-- ===================================================== configurar -->
-    <section data-view="configurar" hidden>
-      <section class="pj-passo" id="passo-3"></section>
-    </section>
-
-    <!-- ===================================================== relatório -->
-    <section data-view="relatorio" hidden>
-      <div id="msgs-relatorio"></div>
-      <div id="relatorio"></div>
-    </section>
-
-    <!-- ===================================================== ajuda -->
-    <section data-view="ajuda" hidden>
-      <div class="pj-ajuda-grade">
-        <section class="pj-passo">
-          <h2>Fluxo de trabalho</h2>
-          <ol class="pj-lista">
-            <li><strong>Baixe</strong> o modelo de planilha (Início).</li>
-            <li><strong>Envie</strong> a planilha preenchida (Planilha).</li>
-            <li><strong>Configure</strong> parasitos, métodos, amostras, critérios e faixas etárias (Configurar).</li>
-            <li><strong>Leia e exporte</strong> o relatório em PDF e Excel (Relatório).</li>
-          </ol>
-        </section>
-        <section class="pj-passo">
-          <h2>Sobre as amostras</h2>
-          <p>Alguns dos métodos aceitos, por tipo de amostra:</p>
-          <p><strong>Pote de fezes</strong> → HPJ, Willis, Baermann-Picanço, Faust, Kato-Katz, MIFC, Ritchie, entre outros.</p>
-          <p><strong>Lâmina (swab)</strong> → Graham, entre outros.</p>
-          <p>Outros métodos também podem ser usados: basta incluir a coluna na planilha e indicar, em Configurar, se é de fezes ou de lâmina. A planilha não precisa trazer todos os métodos listados, só os que você usou.</p>
-        </section>
-        <section class="pj-passo">
-          <h2>Classificação clínica</h2>
-          <p>Você define em Configurar se cada parasito é <strong>patogênico</strong> ou <strong>comensal</strong>. O sistema sugere uma classificação padrão — por exemplo, <em>Entamoeba histolytica/dispar</em> vem como patogênica, já que a diferenciação morfológica entre as duas formas não é possível no laboratório; <em>Blastocystis</em> vem sem classificação.</p>
-        </section>
-        <section class="pj-passo" id="sem-internet">
-          <h2>Usar sem internet</h2>
-          <p>O app guarda neste aparelho o que já foi usado com a internet ligada. Para deixá-lo pronto, faça isto uma vez, com internet:</p>
-          <ol class="pj-lista">
-            <li>Abra a <strong>planilha de teste</strong>.</li>
-            <li>No Relatório, aba <strong>Visão geral</strong>, ligue <strong>Gerar mapa</strong>. Na primeira vez, o app guarda sozinho as malhas de todos os estados (cerca de 72 MB) — por município, por bairro e em detalhe —, então todas as visualizações do mapa passam a funcionar sem internet. Espere a mensagem de pronto.</li>
-          </ol>
-          <p>Também dá para guardar os mapas direto por aqui:</p>
-          <div class="pj-btns">
-            <button class="pj-btn" type="button" data-acao="abrir-teste">Abrir a planilha de teste</button>
-            <button class="pj-btn sec" type="button" data-acao="baixar-mapas">Guardar os mapas de todos os estados (≈ 72 MB)</button>
-            <a class="pj-btn sec" href="exemplos/Planilha_Teste_Piraja.xlsx" download>Baixar a planilha de teste</a>
-          </div>
-          <p class="pj-legenda" id="mapas-status" data-status-mapas></p>
-        </section>
-        <section class="pj-passo" id="como-instalar">
-          <h2>Instalar como app</h2>
-          <p>O Pirajá pode ficar na tela inicial do celular ou no computador, como um aplicativo: abre em tela cheia e funciona sem internet depois da primeira visita. Os dados continuam só no seu aparelho.</p>
-          <ul class="pj-lista">
-            <li><strong>Android e computador (Chrome ou Edge):</strong> use o botão <em>Instalar o app</em> no menu, ou o ícone de instalação na barra de endereço.</li>
-            <li><strong>iPhone e iPad (Safari):</strong> toque em <em>Compartilhar</em> e depois em <em>Adicionar à Tela de Início</em>.</li>
+        <div class="pi-ativa-entrega">
+          <span class="pj-eyebrow">O que o Entero entrega</span>
+          <ul class="pi-entrega">
+            <li>Prevalência por paciente com IC 95%</li>
+            <li>Comparação entre métodos</li>
+            <li>Faixa etária e padrões territoriais</li>
+            <li>Mapas para artigo e mapa interativo</li>
+            <li>Relatório em PDF e Excel</li>
           </ul>
-          <p class="pj-instalado" id="instalado" hidden>Você já está usando o Pirajá como app.</p>
-        </section>
+        </div>
+      </a>
+
+      <div class="pi-grade">
+        <article class="pi-area pi-hemo" aria-disabled="true">
+          <img class="pi-picto" src="brand/areas/piraja-hemo-pictograma.svg" alt="" width="56" height="56">
+          <img class="pi-assinatura" src="brand/areas/piraja-hemo-horizontal-cor.svg" alt="Pirajá Hemo" width="143" height="64">
+          <h3>Hemoparasitos</h3>
+          <p>Parasitos do sangue, como plasmódios, tripanossomatídeos e filárias, em gota espessa e esfregaço.</p>
+          <span class="pi-status">Em breve</span>
+        </article>
+        <article class="pi-area pi-bac" aria-disabled="true">
+          <img class="pi-picto" src="brand/areas/piraja-bac-pictograma.svg" alt="" width="56" height="56">
+          <img class="pi-assinatura" src="brand/areas/piraja-bac-horizontal-cor.svg" alt="Pirajá Bac" width="143" height="64">
+          <h3>Bactérias</h3>
+          <p>Bacterioscopia, cultura e identificação bacteriana.</p>
+          <span class="pi-status">Em breve</span>
+        </article>
+        <article class="pi-area pi-virus" aria-disabled="true">
+          <img class="pi-picto" src="brand/areas/piraja-virus-pictograma.svg" alt="" width="56" height="56">
+          <img class="pi-assinatura" src="brand/areas/piraja-virus-horizontal-cor.svg" alt="Pirajá Virus" width="143" height="64">
+          <h3>Vírus</h3>
+          <p>Testes moleculares, sorológicos e rápidos para vírus.</p>
+          <span class="pi-status">Em breve</span>
+        </article>
+        <article class="pi-area pi-fungi" aria-disabled="true">
+          <img class="pi-picto" src="brand/areas/piraja-fungi-pictograma.svg" alt="" width="56" height="56">
+          <img class="pi-assinatura" src="brand/areas/piraja-fungi-horizontal-cor.svg" alt="Pirajá Fungi" width="143" height="64">
+          <h3>Fungos</h3>
+          <p>Exame micológico direto e cultura de fungos.</p>
+          <span class="pi-status">Em breve</span>
+        </article>
+        <article class="pi-area pi-entomo" aria-disabled="true">
+          <img class="pi-picto" src="brand/areas/piraja-entomo-pictograma.svg" alt="" width="56" height="56">
+          <img class="pi-assinatura" src="brand/areas/piraja-entomo-horizontal-cor.svg" alt="Pirajá Entomo" width="143" height="64">
+          <h3>Vetores e ectoparasitos</h3>
+          <p>Vigilância de vetores, como mosquitos, flebotomíneos e triatomíneos, e de ectoparasitos, como carrapatos, piolhos e pulgas.</p>
+          <span class="pi-status">Em breve</span>
+        </article>
       </div>
     </section>
 
-    <footer class="pj-rodape">
-      <div class="pj-realizacao">
-        <span class="pj-eyebrow">Realização</span>
-        <div class="logos">
-          <img src="brand/parceiros/lapahv.png" alt="LaPaHV — Laboratório de Parasitologia Humana e Veterinária" width="62" height="90">
-          <img class="ufrn" src="brand/parceiros/ufrn.png" alt="UFRN — Universidade Federal do Rio Grande do Norte" width="168" height="54">
-        </div>
-      </div>
-      <p>Nota metodológica: a prevalência é calculada por paciente, não por exame — um paciente conta como positiva se qualquer uma de suas coletas (P1, P2, ... Pn) revelou o parasita. O pote de fezes alimenta os métodos de domínio fecal; a lâmina alimenta exclusivamente os métodos de domínio lâmina/swab. Crianças cujos únicos resultados foram 'Amostra insuficiente' são reportadas à parte como inconclusivas, e não entram nos denominadores de prevalência. Uma célula marcada 'Não realizado' é excluída por completo do denominador daquele método para aquela coleta. A planilha enviada não precisa trazer todos os métodos do modelo — o sistema detecta e analisa só os presentes.</p>
-      <p>Pirajá — a análise roda inteiramente no seu aparelho; nenhum dado da planilha é transmitido.</p>
-      <p>Site desenvolvido com o auxílio do Claude, assistente de inteligência artificial da Anthropic.</p>
+    <footer class="pi-rodape">
+      <p>Pirajá · desenvolvido no Laboratório de Parasitologia Humana e Veterinária (LaPaHV) da Universidade Federal do Rio Grande do Norte.</p>
+      <p class="pj-offline" id="offline" hidden>Disponível sem internet</p>
     </footer>
   </main>
-
-  <dialog class="pj-dialogo" id="aviso-offline" aria-labelledby="aviso-offline-titulo">
-    <form method="dialog">
-      <span class="pj-eyebrow">Antes de usar sem internet</span>
-      <h2 id="aviso-offline-titulo">Prepare o Pirajá uma vez, com internet</h2>
-      <p>Para o app funcionar sem internet, rode a <strong>planilha de teste</strong> uma vez e <strong>gere o mapa</strong>. Assim ele guarda neste aparelho tudo o que precisa, inclusive as malhas dos mapas.</p>
-      <ol class="pj-lista">
-        <li>Clique em <strong>Abrir a planilha de teste</strong> (dados fictícios: 1.200 pacientes, 42 municípios, com idade).</li>
-        <li>No Relatório, aba <strong>Visão geral</strong>, ligue <strong>Gerar mapa</strong>. O app guarda sozinho as malhas de todos os estados (cerca de 72 MB), e todas as visualizações do mapa passam a funcionar sem internet. Espere a mensagem de pronto.</li>
-      </ol>
-      <div class="pj-btns">
-        <button class="pj-btn" type="button" data-acao="abrir-teste">Abrir a planilha de teste</button>
-        <a class="pj-btn sec" href="exemplos/Planilha_Teste_Piraja.xlsx" download>Baixar a planilha</a>
-      </div>
-      <p class="pj-legenda">A planilha de teste também fica na aba <b>Planilha</b>, e estas instruções na aba <b>Ajuda</b>.</p>
-      <div class="pj-dialogo-rodape">
-        <label class="pj-check"><input type="checkbox" id="aviso-offline-nunca"><span>Não mostrar novamente</span></label>
-        <button class="pj-btn sec" value="fechar">Agora não</button>
-      </div>
-    </form>
-  </dialog>
-
-  <div class="pj-dica" id="dica" hidden></div>
-  <noscript><div class="pj-toast">O Pirajá precisa de JavaScript ativado no navegador.</div></noscript>
 </body>
 </html>

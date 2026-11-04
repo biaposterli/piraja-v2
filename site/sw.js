@@ -9,7 +9,7 @@
 //                         atualizada em segundo plano.
 // Ao publicar uma versão com arquivos novos no núcleo, aumente VERSAO.
 
-const VERSAO = "piraja-v2-3";
+const VERSAO = "piraja-v2-4";
 const NUCLEO = `${VERSAO}-nucleo`;
 const EXTRAS = `${VERSAO}-extras`;
 // malhas dos mapas (72 MB): cache SEM versão, para não serem apagadas e baixadas
@@ -17,13 +17,15 @@ const EXTRAS = `${VERSAO}-extras`;
 const MAPAS = "piraja-mapas";
 
 const ARQUIVOS_NUCLEO = [
-  "./", "./index.html", "./404.html", "./manifest.webmanifest", "./css/piraja.css",
-  "./js/app.js", "./js/config.js", "./js/engine.js", "./js/graficos.js", "./js/idade.js", "./js/ilustracoes.js",
+  "./", "./index.html", "./entero.html", "./404.html", "./manifest.webmanifest", "./css/piraja.css", "./css/inicio.css",
+  "./js/app.js", "./js/inicio.js", "./js/config.js", "./js/engine.js", "./js/graficos.js", "./js/idade.js", "./js/ilustracoes.js",
   "./js/mapa-dados.js", "./js/mapa-desenho.js", "./js/mapa-painel.js", "./js/opcoes-pdf.js", "./js/padroes.js",
   "./js/pdf.js", "./js/pipeline.js", "./js/planilhas.js", "./js/relatorio.js", "./js/sugestoes.js", "./js/tabela.js",
   "./js/tabelas.js", "./js/util.js",
   "./vendor/exceljs.min.js", "./vendor/xlsx.full.min.js", "./vendor/pdfmake.min.js",
   "./brand/piraja-entero-negativo.svg", "./brand/piraja-entero-cor.png", "./brand/piraja-favicon.svg", "./brand/piraja-favicon.png",
+  "./brand/piraja-horizontal-cor.svg", "./brand/piraja-simbolo-negativo.svg",
+  "./brand/areas/piraja-entero-horizontal-cor.svg", "./brand/areas/piraja-entero-pictograma.svg", "./brand/areas/piraja-hemo-horizontal-cor.svg", "./brand/areas/piraja-hemo-pictograma.svg", "./brand/areas/piraja-bac-horizontal-cor.svg", "./brand/areas/piraja-bac-pictograma.svg", "./brand/areas/piraja-virus-horizontal-cor.svg", "./brand/areas/piraja-virus-pictograma.svg", "./brand/areas/piraja-fungi-horizontal-cor.svg", "./brand/areas/piraja-fungi-pictograma.svg", "./brand/areas/piraja-entomo-horizontal-cor.svg", "./brand/areas/piraja-entomo-pictograma.svg",
   "./brand/parceiros/lapahv.png", "./brand/parceiros/ufrn.png", "./brand/app/icone-192.png", "./brand/app/icone-512.png",
   "./brand/fonts/Fraunces-Regular.ttf", "./brand/fonts/Fraunces-SemiBold.ttf",
   "./brand/fonts/InstrumentSans-Regular.ttf", "./brand/fonts/InstrumentSans-SemiBold.ttf",
