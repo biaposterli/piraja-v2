@@ -169,7 +169,7 @@ export function colunas(paineis, o = {}) {
   for (const p of paineis) {
     const pw = plotW * (p.barras.length / Math.max(1, totalBarras));
     const slot = pw / Math.max(1, p.barras.length);
-    const bw = Math.min(64, slot * 0.6);
+    const bw = Math.min(o.barraMax || 40, slot * 0.6);
     if (p.titulo) s += `<text x="${(x + pw / 2).toFixed(1)}" y="${tam + 2}" font-size="${tam}" font-weight="bold" fill="${COR.TINTA_SUAVE}" text-anchor="middle">${esc(p.titulo)}</text>`;
     s += `<line x1="${x}" y1="${base}" x2="${(x + pw).toFixed(1)}" y2="${base}" stroke="${COR.LINHA}" stroke-width="1"/>`;
     p.barras.forEach((b, i) => {
@@ -310,4 +310,85 @@ export function graficoTodos(todos, o = {}) {
     texto: o.comMetodos ? `${Number(r.prevalencia).toFixed(1)}% · ${r.metodos}` : `${Number(r.prevalencia).toFixed(1)}%`,
     dica: `${r.especie}\n${r.categoria} · ${r.dominio}\nPrevalência: ${Number(r.prevalencia).toFixed(1)}% (${r.n} de ${r.base_n})\nMétodo(s): ${r.metodos}`,
   })), { xmax: Math.max(10, Math.min(115, vmax * 1.3)), tituloX: "Prevalência (%)", legenda: leg, ...o });
+}
+
+// ---------------------------------------------------------------------------
+// funil (padrões territoriais): pontos = municípios, x = nº de pacientes,
+// y = % positivos; faixa de 95% sombreada, limites de 99,8% em linha fina.
+// pontos: [{ nome, n, prev (0–100), f95, f998, dica }] · limite(n, q) -> 0–1
+// ---------------------------------------------------------------------------
+export function funil(pontos, p0, limite, o = {}) {
+  const tam = o.fonte || 12;
+  const W = o.largura || 640, H = o.altura || 340;
+  const legenda = [
+    { cor: COR.COBRE, rotulo: "Acima da faixa" }, { cor: COR.MATA, rotulo: "Abaixo da faixa" },
+    { cor: COR.SALVIA, rotulo: "Dentro do esperado" }, { cor: "#E3EEE8", rotulo: "Faixa de 95%" },
+  ];
+  // legenda quebra em linhas quando não cabe (celular)
+  const linhasLeg = [[]];
+  let larg = 0;
+  for (const it of legenda) {
+    const w = (tam - 1) + 5 + larguraTexto(it.rotulo, tam - 1) + 16;
+    if (larg + w > W && linhasLeg[linhasLeg.length - 1].length) { linhasLeg.push([]); larg = 0; }
+    linhasLeg[linhasLeg.length - 1].push(it); larg += w;
+  }
+  const topo = linhasLeg.length * (tam + 6) + 16, margemEsq = 44, margemDir = 14;
+  const base = H - 40 - (o.tituloX ? tam + 4 : 0);
+  const nMax = Math.max(...pontos.map((p) => p.n));
+  const xmax = nMax * 1.06, xmin = 0;
+  const nMin = Math.max(2, Math.min(...pontos.map((p) => p.n)));
+  const curva = (q) => {
+    const out = [];
+    for (let i = 0; i <= 60; i++) {
+      const n = Math.round(nMin + (xmax - nMin) * (i / 60) ** 1.6);
+      if (!out.length || out[out.length - 1][0] !== n) out.push([n, 100 * limite(n, q)]);
+    }
+    return out;
+  };
+  const sup95 = curva(0.975), inf95 = curva(0.025), sup998 = curva(0.999), inf998 = curva(0.001);
+  const ymax = Math.min(100, Math.max(10, ...pontos.map((p) => p.prev), ...sup998.filter(([n]) => n >= nMin * 2).map(([, v]) => v)) * 1.1);
+  const X = (n) => margemEsq + ((n - xmin) / (xmax - xmin)) * (W - margemEsq - margemDir);
+  const Y = (v) => base - (Math.min(v, ymax) / ymax) * (base - topo);
+  let s = cabecalhoSvg(W, H, o.fundo);
+  linhasLeg.forEach((l, i) => { s += legendaHorizontal(l, 0, tam + 2 + i * (tam + 6), tam - 1)[0]; });
+  for (const t of ticks(ymax)) {
+    if (t > ymax + 1e-9) continue;
+    s += `<line x1="${margemEsq}" y1="${Y(t).toFixed(1)}" x2="${W - margemDir}" y2="${Y(t).toFixed(1)}" stroke="${COR.GRADE}" stroke-width="1"/>`;
+    s += `<text x="${margemEsq - 6}" y="${(Y(t) + tam * 0.35).toFixed(1)}" font-size="${tam - 1}" fill="${COR.TINTA_SUAVE}" text-anchor="end">${fmt(t)}</text>`;
+  }
+  for (const t of ticks(xmax, 6)) {
+    if (t > xmax) continue;
+    s += `<text x="${X(t).toFixed(1)}" y="${base + tam + 6}" font-size="${tam - 1}" fill="${COR.TINTA_SUAVE}" text-anchor="middle">${fmt(t)}</text>`;
+  }
+  s += `<line x1="${margemEsq}" y1="${base}" x2="${W - margemDir}" y2="${base}" stroke="${COR.LINHA}" stroke-width="1"/>`;
+  const caminho = (pts) => pts.map(([n, v], i) => `${i ? "L" : "M"}${X(n).toFixed(1)} ${Y(v).toFixed(1)}`).join("");
+  s += `<path d="${caminho(sup95)}${caminho([...inf95].reverse()).replace(/^M/, "L")}Z" fill="#E3EEE8"/>`;
+  for (const c of [sup998.filter(([, v]) => v <= ymax), inf998]) if (c.length > 1) s += `<path d="${caminho(c)}" fill="none" stroke="${COR.SALVIA}" stroke-width="1.2"/>`;
+  s += `<line x1="${X(nMin).toFixed(1)}" y1="${Y(p0).toFixed(1)}" x2="${(W - margemDir).toFixed(1)}" y2="${Y(p0).toFixed(1)}" stroke="${COR.MATA}" stroke-width="1"/>`;
+  s += `<text x="${(W - margemDir).toFixed(1)}" y="${(Y(p0) - 5).toFixed(1)}" font-size="${tam - 1}" fill="${COR.TINTA_SUAVE}" text-anchor="end">média ${p0.toFixed(1)}%</text>`;
+  const cor = (p) => (p.f95 === "acima" ? COR.COBRE : p.f95 === "abaixo" ? COR.MATA : COR.SALVIA);
+  const ord = [...pontos].sort((a, b) => (a.f95 ? 1 : 0) - (b.f95 ? 1 : 0));
+  for (const p of ord) {
+    const cx = X(p.n), cy = Y(p.prev);
+    s += `<g class="pj-marca"${dicaAttr(p.dica)}><circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${p.f95 ? 5 : 4}" fill="${cor(p)}" stroke="${o.fundo || COR.SUPERFICIE}" stroke-width="2"/>` +
+      `<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="12" fill="transparent"/></g>`;
+  }
+  // rótulos só para quem ficou fora da faixa de 95%: à direita do ponto, ou à
+  // esquerda se colidir; se ainda colidir, fica só na dica e na tabela
+  const caixas = pontos.map((p) => ({ x0: X(p.n) - 5, x1: X(p.n) + 5, y0: Y(p.prev) - 5, y1: Y(p.prev) + 5 }));
+  const colide = (b) => caixas.some((c) => b.x0 < c.x1 && b.x1 > c.x0 && b.y0 < c.y1 && b.y1 > c.y0);
+  for (const p of [...pontos].filter((q) => q.f95).sort((a, b) => b.n - a.n)) {
+    const cx = X(p.n), cy = Y(p.prev), w = larguraTexto(p.nome, tam - 1);
+    const ty = Math.min(cy + tam * 0.35, base - 6);
+    const opcoes = [{ x0: cx + 8, x1: cx + 8 + w, anc: "start", tx: cx + 8 }, { x0: cx - 8 - w, x1: cx - 8, anc: "end", tx: cx - 8 }]
+      .map((b) => ({ ...b, y0: ty - tam, y1: ty + 2 }))
+      .filter((b) => b.x0 >= margemEsq && b.x1 <= W - margemDir);
+    const ok = opcoes.find((b) => !colide(b));
+    if (!ok) continue;
+    caixas.push(ok);
+    s += `<text x="${ok.tx.toFixed(1)}" y="${ty.toFixed(1)}" font-size="${tam - 1}" fill="${COR.TINTA}" text-anchor="${ok.anc}">${esc(p.nome)}</text>`;
+  }
+  if (o.tituloY) s += `<text transform="translate(12 ${((topo + base) / 2).toFixed(1)}) rotate(-90)" font-size="${tam - 1}" fill="${COR.TINTA_SUAVE}" text-anchor="middle">${esc(o.tituloY)}</text>`;
+  if (o.tituloX) s += `<text x="${((margemEsq + W) / 2).toFixed(1)}" y="${H - 6}" font-size="${tam - 1}" fill="${COR.TINTA_SUAVE}" text-anchor="middle">${esc(o.tituloX)}</text>`;
+  return s + "</svg>";
 }
