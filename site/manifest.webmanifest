@@ -1,0 +1,28 @@
+{
+  "name": "Pirajá · Entero",
+  "short_name": "Pirajá",
+  "description": "Análise epidemiológica de exames parasitológicos: prevalência com IC 95%, métodos, faixa etária, território, mapas e relatórios em PDF e Excel. Tudo roda no aparelho; nenhum dado sai dele.",
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "id": "./",
+  "start_url": "./#inicio",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "orientation": "any",
+  "theme_color": "#11483D",
+  "background_color": "#F4F1EA",
+  "categories": ["medical", "education", "productivity"],
+  "icons": [
+    { "src": "brand/app/icone-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "brand/app/icone-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "brand/app/icone-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "brand/piraja-favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ],
+  "file_handlers": [
+    {
+      "action": "./#planilha",
+      "accept": { "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"], "application/vnd.ms-excel": [".xls"] }
+    }
+  ]
+}

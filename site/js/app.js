@@ -33,6 +33,109 @@ const S = {
 
 const $ = (sel, raiz = document) => raiz.querySelector(sel);
 
+// ===================================================================== navegação (app)
+const SECOES = [
+  { id: "inicio", nome: "Início", icone: () => I.icones.visao(PAPEL, "#D08A6A") },
+  { id: "planilha", nome: "Planilha", icone: () => I.icones.upload(PAPEL, "#D08A6A") },
+  { id: "configurar", nome: "Configurar", icone: () => I.icones.criterios(PAPEL, "#D08A6A"), precisaDados: true },
+  { id: "relatorio", nome: "Relatório", icone: () => I.icones.parasito(PAPEL, "#D08A6A"), precisaDados: true },
+  { id: "ajuda", nome: "Ajuda", icone: () => I.icones.paciente(PAPEL, "#D08A6A") },
+];
+const TITULOS = { inicio: "Painel de análise epidemiológica", planilha: "Enviar planilha", configurar: "Configurar a análise",
+  relatorio: "Relatório", ajuda: "Ajuda" };
+let secaoAtual = "inicio";
+
+function montarNav() {
+  const botoes = (movel) => SECOES.map((s) => `<button type="button" data-ir="${s.id}"${s.precisaDados ? " data-precisa-dados" : ""}>` +
+    `${movel ? "" : s.icone()}<span>${s.nome}</span></button>` + (!movel && s.id === "relatorio" ? `<div class="pj-subnav" id="subnav" hidden></div>` : "")).join("");
+  $("#nav").innerHTML = botoes(false);
+  $("#mnav").innerHTML = botoes(true);
+  atualizarNav();
+}
+
+function atualizarNav() {
+  const temDados = Boolean(S.df && S.resultado && !S.resultado.erros?.length);
+  for (const b of document.querySelectorAll("[data-ir]")) {
+    if (b.closest(".pj-nav, .pj-mnav")) b.setAttribute("aria-current", b.dataset.ir === secaoAtual ? "page" : "false");
+    if (b.hasAttribute("data-precisa-dados")) b.classList.toggle("sem-dados", !temDados);
+  }
+  const sub = $("#subnav");
+  if (sub) sub.hidden = !(temDados && secaoAtual === "relatorio");
+  const chip = $("#arquivo-atual");
+  if (chip) {
+    chip.hidden = !S.arquivo;
+    if (S.arquivo) chip.innerHTML = `<span>Planilha</span><b title="${esc(S.arquivo.nome)}">${esc(S.arquivo.nome)}</b>`;
+  }
+}
+
+/** Sub-itens do Relatório no menu lateral (as abas do relatório). */
+function montarSubnav() {
+  const sub = $("#subnav");
+  if (!sub) return;
+  const abas = [...document.querySelectorAll('#relatorio .pj-abas[data-grupo="rel"] .pj-aba')];
+  sub.innerHTML = abas.map((a) => `<button type="button" data-sub="${a.dataset.aba}" aria-current="${a.dataset.aba === S.abaRel ? "true" : "false"}">${esc(a.textContent.trim())}</button>`).join("");
+}
+
+function ir(id, { rolar = true, historico = true } = {}) {
+  const s = SECOES.find((x) => x.id === id) || SECOES[0];
+  if (s.precisaDados && !(S.df && S.resultado)) {
+    if (historico) toast("Envie uma planilha primeiro.");
+    return ir("planilha", { rolar, historico });
+  }
+  secaoAtual = s.id;
+  for (const v of document.querySelectorAll("[data-view]")) v.hidden = v.dataset.view !== s.id;
+  $("#titulo-secao").textContent = TITULOS[s.id];
+  document.title = s.id === "inicio" ? "Pirajá · Painel de análise epidemiológica" : `${TITULOS[s.id]} · Pirajá`;
+  if (historico && location.hash !== `#${s.id}`) history.pushState(null, "", `#${s.id}`);
+  atualizarNav();
+  if (s.id === "relatorio") { montarSubnav(); desenharGraficos(); }
+  if (rolar) scrollTo({ top: 0, behavior: "instant" in window ? "instant" : "auto" });
+}
+
+// ===================================================================== app instalável
+let pedidoInstalacao = null;
+
+function ligarApp() {
+  const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  if (standalone) { const el = $("#instalado"); if (el) el.hidden = false; }
+  addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    pedidoInstalacao = e;
+    for (const b of document.querySelectorAll('[data-acao="instalar"]')) b.hidden = false;
+  });
+  addEventListener("appinstalled", () => {
+    pedidoInstalacao = null;
+    for (const b of document.querySelectorAll('[data-acao="instalar"]')) b.hidden = true;
+    toast("Pirajá instalado. Ele abre como app e funciona sem internet.");
+  });
+  // iPhone/iPad: não há aviso de instalação; o botão leva às instruções
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  if (ios && !standalone) for (const b of document.querySelectorAll('[data-acao="instalar"]')) b.hidden = false;
+
+  if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost" || location.hostname === "127.0.0.1")) {
+    navigator.serviceWorker.register("sw.js").then(() => navigator.serviceWorker.ready)
+      .then(() => { const o = $("#offline"); if (o) o.hidden = false; })
+      .catch((e) => console.warn("Service worker não registrado:", e));
+  }
+  // abrir uma planilha direto pelo sistema ("Abrir com > Pirajá", no app instalado)
+  if ("launchQueue" in window) {
+    window.launchQueue.setConsumer(async (p) => {
+      if (p.files && p.files.length) { ir("planilha"); carregarArquivo(await p.files[0].getFile()); }
+    });
+  }
+}
+
+async function instalar() {
+  if (pedidoInstalacao) {
+    pedidoInstalacao.prompt();
+    await pedidoInstalacao.userChoice.catch(() => null);
+    pedidoInstalacao = null;
+    return;
+  }
+  ir("ajuda");
+  $("#como-instalar")?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 // ===================================================================== início
 function iniciar() {
   $("#hero").insertAdjacentHTML("beforeend", I.microscopio());
@@ -58,6 +161,11 @@ function iniciar() {
   for (const ev of ["dragenter", "dragover"]) drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("sobre"); });
   for (const ev of ["dragleave", "drop"]) drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("sobre"); });
   drop.addEventListener("drop", (e) => { const f = e.dataTransfer.files[0]; if (f) carregarArquivo(f); });
+
+  montarNav();
+  addEventListener("popstate", () => ir(location.hash.slice(1) || "inicio", { historico: false }));
+  ir(location.hash.slice(1) || "inicio", { rolar: false, historico: false });
+  ligarApp();
 }
 
 // ===================================================================== utilidades de interface
@@ -126,7 +234,10 @@ function trocarAba(btn) {
   for (const b of btn.parentElement.querySelectorAll(".pj-aba")) b.setAttribute("aria-selected", String(b === btn));
   for (const p of document.querySelectorAll(`[data-painel][data-grupo="${grupo}"]`)) p.hidden = p.dataset.painel !== alvo;
   if (grupo === "cfg") S.abaCfg = alvo;
-  if (grupo === "rel") S.abaRel = alvo;
+  if (grupo === "rel") {
+    S.abaRel = alvo;
+    for (const b of document.querySelectorAll("#subnav [data-sub]")) b.setAttribute("aria-current", String(b.dataset.sub === alvo));
+  }
   desenharGraficos();
 }
 
@@ -134,6 +245,14 @@ function trocarAba(btn) {
 async function aoClicar(e) {
   const aba = e.target.closest(".pj-aba");
   if (aba) { trocarAba(aba); return; }
+  const destino = e.target.closest("[data-ir]");
+  if (destino) { ir(destino.dataset.ir); return; }
+  const sub = e.target.closest("[data-sub]");
+  if (sub) {
+    const alvo = document.querySelector(`#relatorio .pj-aba[data-aba="${sub.dataset.sub}"]`);
+    if (alvo) { trocarAba(alvo); $("#relatorio")?.scrollIntoView({ block: "start" }); }
+    return;
+  }
   const el = e.target.closest("[data-acao]");
   if (!el) {
     if (document.body.classList.contains("menu-aberto") && !e.target.closest("#barra")) fecharMenu();
@@ -141,7 +260,8 @@ async function aoClicar(e) {
   }
   const acao = el.dataset.acao;
   if (el.tagName === "A") e.preventDefault();
-  if (acao === "menu") {
+  if (acao === "instalar") instalar();
+  else if (acao === "menu") {
     const aberto = document.body.classList.toggle("menu-aberto");
     el.setAttribute("aria-expanded", String(aberto));
     el.textContent = aberto ? "✕ Fechar" : "☰ Menu";
@@ -150,7 +270,7 @@ async function aoClicar(e) {
       const { gerarModelo } = await import("./planilhas.js");
       baixar(await gerarModelo(), "Modelo_Levantamento_Parasitoses.xlsx", XLSX_MIME);
     });
-  } else if (acao === "trocar-arquivo") $("#arquivo").click();
+  } else if (acao === "trocar-arquivo") { ir("planilha"); $("#arquivo").click(); }
   else if (acao === "aplicar") aplicarConfig();
   else if (acao === "pdf-sel") {
     const sel = el.dataset.sel;
@@ -242,8 +362,10 @@ async function carregarArquivo(file) {
   const msgs = $("#msgs-arquivo");
   const info = $("#arquivo-info");
   msgs.innerHTML = `<div class="pj-carregando">Lendo a planilha…</div>`;
-  $("#saida").innerHTML = "";
+  for (const id of ["#passo-3", "#msgs-relatorio", "#relatorio"]) $(id).innerHTML = "";
   S.mapa = null;
+  S.df = null; S.resultado = null;
+  atualizarNav();
   try {
     if (!/\.(xlsx|xls)$/i.test(file.name)) throw new Error("envie um arquivo .xlsx ou .xls");
     const buffer = await file.arrayBuffer();
@@ -272,7 +394,10 @@ async function carregarArquivo(file) {
     S.abaCfg = "cfg-par";
     S.abaRel = "rel-geral";
     renderTudo();
-    $("#passo-3")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    // com nomes a conferir (sugestões de grafia) ou erro, abre Configurar; senão, o relatório
+    const conferir = S.cfg.par.some((r) => sugestaoLinha(r)?.sugestao);
+    ir(S.resultado && !S.resultado.erros.length && !conferir ? "relatorio" : "configurar");
+    if (conferir) toast("Alguns nomes de parasitos parecem grafias diferentes. Confira as sugestões antes de ler o relatório.", 5000);
   } catch (e) {
     console.error(e);
     S.df = null;
@@ -506,6 +631,7 @@ function aplicarConfig() {
   S.pendente = false;
   S.mapa = null;
   renderTudo();
+  ir("relatorio");
   toast("Configuração aplicada — relatório atualizado.");
 }
 
@@ -514,11 +640,11 @@ const idadeRel = () => (S.idades && S.cfg.idade ? { idades: S.idades, cortes: S.
 
 // ===================================================================== passo 04 — relatório
 function renderTudo() {
-  const saida = $("#saida");
-  saida.innerHTML = `<section class="pj-passo" id="passo-3"></section><div id="msgs-relatorio"></div><div id="relatorio"></div>`;
+  $("#relatorio").innerHTML = "";
   renderConfig();
   const r = analisar(S.df, S.cfg);
   S.resultado = r;
+  atualizarNav();
   const msgs = $("#msgs-relatorio");
   if (r.erros.length) {
     msgs.innerHTML = r.erros.map((x) => alerta("erro", esc(x))).join("");
@@ -551,6 +677,8 @@ function renderTudo() {
   $("#relatorio").innerHTML = renderRelatorio(m, idadeRel());
   const aba = document.querySelector(`#relatorio .pj-aba[data-aba="${S.abaRel}"]`);
   if (aba) trocarAba(aba);
+  montarSubnav();
+  atualizarNav();
   desenharGraficos();
 }
 

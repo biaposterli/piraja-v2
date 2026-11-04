@@ -98,7 +98,23 @@ que deve terminar com "TODAS AS VERIFICAÇÕES DAS SUGESTÕES PASSARAM":
 ```bash
 node tests/sugestoes.mjs
 node tests/idade.mjs      # leitura de idade e faixas etárias
+node tests/app.mjs        # manifesto, ícones e arquivos guardados para uso sem internet
 ```
+
+## O Pirajá como app (instalável e sem internet)
+
+O site também é um app instalável (PWA): `site/manifest.webmanifest` descreve nome,
+cores e ícones, e `site/sw.js` (service worker) guarda os arquivos do site para que ele
+abra e funcione sem internet depois da primeira visita. Nenhum dado de planilha é
+guardado pelo service worker — só os arquivos do próprio site.
+
+- Instalar: Chrome/Edge (Android e computador) mostram o botão **Instalar o app** no
+  menu; no iPhone/iPad, Safari → Compartilhar → **Adicionar à Tela de Início**.
+- Só funciona em endereço com HTTPS (o `*.pages.dev` do Cloudflare já é) ou em `localhost`.
+- **Ao criar um arquivo novo em `site/js/`**, acrescente-o em `ARQUIVOS_NUCLEO` no
+  `sw.js` e aumente `VERSAO` (o teste `tests/app.mjs` avisa se esquecer). Mudanças em
+  arquivos que já existem chegam sozinhas: páginas, CSS e JS são buscados primeiro na rede.
+- Ícones: `python3 tools/gerar_icones.py` gera `site/brand/app/` a partir do símbolo.
 
 ## E o app em Python (Streamlit)?
 
