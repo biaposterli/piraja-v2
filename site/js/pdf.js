@@ -3,7 +3,8 @@
 // gráficos em vetor (os mesmos SVG da tela).
 
 import { carregarScript } from "./tabela.js";
-import { COR, graficoEspecies, graficoTodos, colunas, rosca, linha } from "./graficos.js";
+import { COR, graficoEspecies, graficoTodos, colunas, rosca, linha, pontosIC } from "./graficos.js";
+import { analisarIdade } from "./idade.js";
 import { pivotMetodoEspecie, npRound1 } from "./relatorio.js";
 import { agoraTexto, LOGO_PNG, LOGOS_PARCEIROS } from "./planilhas.js";
 import { CATEGORIAS_AMOSTRAGEM } from "./engine.js";
@@ -68,16 +69,38 @@ function regua(espessura, cor) {
   return { canvas: [{ type: "line", x1: 0, y1: 0, x2: 174 * MM, y2: 0, lineWidth: espessura, lineColor: cor }], margin: [0, 0, 0, 0] };
 }
 
+// largura útil da página (A4 menos as margens de 18 mm)
+const LARGURA_UTIL = 174 * MM;
+
+/**
+ * Larguras das colunas (mm, ou "*") ajustadas para a tabela caber na página:
+ * o pdfmake soma o espaçamento interno (padding) de cada lado de cada coluna
+ * às larguras pedidas, então as larguras fixas são reduzidas na proporção
+ * quando a soma passa da largura útil. Colunas "*" ficam com o que sobrar
+ * (no mínimo 14 mm cada).
+ */
+function ajustarLarguras(larguras, hp) {
+  const fixas = larguras.filter((w) => w !== "*").reduce((t, w) => t + w * MM, 0);
+  const nEstrela = larguras.filter((w) => w === "*").length;
+  const disponivel = LARGURA_UTIL - larguras.length * 2 * hp - 1 - nEstrela * 14 * MM;
+  const f = fixas > disponivel ? disponivel / fixas : 1;
+  return larguras.map((w) => (w === "*" ? "*" : w * MM * f));
+}
+
 /** Tabela no estilo do relatório (cabeçalho cinza, filete salvia, linhas finas). */
 function tabelaPdf(cabecalho, linhas, larguras, o = {}) {
   if (!linhas.length) return P("Sem dados.");
-  const fs = o.fonte || 8;
-  const hp = o.padding ?? 6;
+  const muitas = larguras.length >= 7;
+  const fs = o.fonte || (muitas ? 7.5 : 8);
+  const hp = o.padding ?? (muitas ? 3.5 : 6);
+  const celula = (v, extra = {}) => (v && typeof v === "object" && !Array.isArray(v) && "text" in v
+    ? { color: INK, fontSize: fs, ...v, ...extra }
+    : { text: v === null || v === undefined ? "None" : String(v), color: INK, fontSize: fs, ...extra });
   return {
     table: {
-      headerRows: 1, widths: larguras.map((w) => (w === "*" ? "*" : w * MM)), dontBreakRows: true,
+      headerRows: 1, widths: ajustarLarguras(larguras, hp), dontBreakRows: true,
       body: [cabecalho.map((t) => ({ text: t, bold: true, color: INK_FAINT, fontSize: fs })),
-        ...linhas.map((l) => l.map((v) => ({ text: v === null || v === undefined ? "None" : String(v), color: INK, fontSize: fs })))],
+        ...linhas.map((l) => l.map((v) => celula(v)))],
     },
     layout: {
       hLineWidth: (i, node) => (i === 0 || i === node.table.body.length ? 0 : i === 1 ? 0.9 : 0.4),
@@ -126,7 +149,7 @@ function statTable(m) {
   });
   return {
     table: {
-      widths: [56 * MM, 56 * MM, 56 * MM],
+      widths: ["*", "*", "*"],
       body: [[
         cel("PREVALÊNCIA — AMOSTRA FECAL", m.prev_fecal, nF, m.prev_fecal_ic95_inf, m.prev_fecal_ic95_sup,
           baseTxt(m.fecal_conclusivo.filter((r) => r.positivo_fecal).length, nF, dom.has("fecal"), "fezes")),
@@ -181,7 +204,51 @@ function secaoDominio(cont, titulo, espDf, nBase, nPos, prev, ic, nPat, prevPat,
 }
 
 // ---------------------------------------------------------------- documento
-export async function gerarPdf(m, { mapa = null } = {}) {
+// ---------------------------------------------------------------- faixa etária
+function secaoIdade(c, m, idade) {
+  const r = analisarIdade(m, idade.idades, idade.cortes);
+  c.push(h2("Prevalência por faixa etária"));
+  c.push(P(`Mesmos denominadores do relatório (pacientes com resultado conclusivo em cada tipo de amostra), com fezes e lâmina separadas. ` +
+    `Faixas: ${r.faixas.map((f) => f.rotulo).join(", ")}.` +
+    (idade.idades.nSemIdade ? ` ${idade.idades.nSemIdade} paciente(s) sem idade ficaram fora desta seção.` : ""), "small"));
+  const ic = (a, b) => (a === null ? "—" : `${a.toFixed(1)}–${b.toFixed(1)}%`);
+  const pv = (p) => (p === null ? null : p < 0.001 ? "< 0.001" : p.toFixed(3));
+  for (const [d, titulo] of [[r.fezes, "Fezes"], [r.lamina, "Lâmina"]]) {
+    if (!d.nTotal) { c.push(h3(titulo), P("Nenhum paciente com idade e resultado conclusivo neste tipo de amostra.", "small")); continue; }
+    const iguais = d.linhas.every((l) => l.k === l.k_pat);
+    const series = iguais ? [{ rotulo: "Com parasito", cor: COR.COBRE }]
+      : [{ rotulo: "Todos os parasitos", cor: COR.MATA }, { rotulo: "Só patogênicos", cor: COR.COBRE }];
+    const grupos = d.linhas.map((l) => {
+      const um = (v, inf, sup) => (l.n ? { v, inf, sup } : null);
+      const pat = um(l.prev_pat, l.pat_ic95_inf, l.pat_ic95_sup);
+      return { rotulo: l.faixa, valores: iguais ? [pat] : [um(l.prev, l.ic95_inf, l.ic95_sup), pat] };
+    });
+    c.push({ stack: [h3(titulo), svgNo(pontosIC(grupos, series, { ...OPCOES_PDF, largura: 150 * MM * 1.3, tituloX: "Prevalência (%) com IC 95%" }), 150)], unbreakable: true }, esp(1.5));
+    c.push(tabelaPdf(["Faixa etária", "Pacientes", ...(iguais ? [] : ["Todos %", "IC 95%"]), iguais ? "Com parasito %" : "Só patogênicos %", "IC 95%"],
+      d.linhas.map((l) => [l.faixa, l.n, ...(iguais ? [] : [l.n ? pyF(+l.prev.toFixed(1)) : "—", ic(l.ic95_inf, l.ic95_sup)]),
+        l.n ? pyF(+l.prev_pat.toFixed(1)) : "—", ic(l.pat_ic95_inf, l.pat_ic95_sup)]),
+      iguais ? [50, 24, 30, 34] : [44, 22, 22, 30, 28, 30]));
+    const t1 = pv(d.tendencia.p_valor), t2 = pv(d.tendenciaPat.p_valor);
+    if (d.linhas.filter((l) => l.n).length >= 3 && (t1 || t2)) {
+      c.push(esp(1), P(`Tendência com a idade (Cochran-Armitage): ${iguais ? `p = ${t2}` : `todos os parasitos p = ${t1}; só patogênicos p = ${t2}`}.`, "small"));
+    }
+    c.push(esp(2));
+  }
+  const espc = r.especies.filter((e) => e.valores.some((v) => v));
+  if (espc.length && r.fezes.linhas.length > 1) {
+    c.push(h3("Espécies por faixa etária (fezes, %)"));
+    c.push(P("Prevalência de cada espécie em cada faixa; o sombreado marca, em cada linha, as faixas em que a espécie foi mais frequente.", "small"), esp(1));
+    const nF = r.fezes.linhas.length;
+    const linhas = espc.map((e) => {
+      const mx = Math.max(...e.valores.map((v) => v ?? 0));
+      return [{ text: e.especie, italics: true }, ...e.valores.map((v) => (v === null ? "—" : !v ? "·"
+        : { text: v.toFixed(1), alignment: "right", ...(mx && v / mx > 0.5 ? { fillColor: TEAL_DARK, fillOpacity: 0.32 * (v / mx - 0.5) / 0.5 + 0.04 } : {}) }))];
+    });
+    c.push(tabelaPdf(["Espécie", ...r.fezes.linhas.map((l) => `${l.faixa}\n(n=${l.n})`)], linhas, [52, ...Array(nF).fill(Math.min(28, 120 / nF))]));
+  }
+}
+
+export async function gerarPdf(m, { mapa = null, idade = null } = {}) {
   const { pdfMake, vfs } = await prepararPdfMake();
   let logo = null;
   try { logo = "data:image/png;base64," + base64(await binario(LOGO_PNG)); } catch { logo = null; }
@@ -200,8 +267,8 @@ export async function gerarPdf(m, { mapa = null } = {}) {
           ...(parceiros ? [{
             columns: [{ text: "", width: "*" },
               { image: parceiros[0], fit: [13 * MM, 16 * MM], width: 13 * MM },
-              { image: parceiros[1], fit: [30 * MM, 9.6 * MM], width: 30 * MM, margin: [4 * MM, 3.4 * MM, 0, 0] }],
-            margin: [0, 0, 0, 2 * MM],
+              { image: parceiros[1], fit: [30 * MM, 9.6 * MM], width: 30 * MM, margin: [0, 3.4 * MM, 0, 0] }],
+            columnGap: 4 * MM, margin: [0, 0, 0, 2 * MM],
           }] : [{ text: "", margin: [0, 18, 0, 0] }]),
           { text: `Relatório de análise epidemiológica · gerado em ${agoraTexto()}`, style: "meta", alignment: "right" },
         ],
@@ -277,6 +344,8 @@ export async function gerarPdf(m, { mapa = null } = {}) {
       c.push({ stack: [h3("Mapa"), { image: mapa.dataUrl, width: 172 * MM }], unbreakable: true });
     }
   }
+
+  if (idade) secaoIdade(c, m, idade);
 
   // todos os parasitos
   c.push(h2("Prevalência de todos os parasitos"));

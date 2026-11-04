@@ -181,12 +181,12 @@ async function aoClicar(e) {
   } else if (acao === "baixar-excel") {
     await comBotao(el, async () => {
       const { relatorioExcel } = await import("./planilhas.js");
-      baixar(await relatorioExcel(S.resultado.metrics, S.cfg), "Relatorio_Analise_Epidemiologica.xlsx", XLSX_MIME);
+      baixar(await relatorioExcel(S.resultado.metrics, S.cfg, idadeRel()), "Relatorio_Analise_Epidemiologica.xlsx", XLSX_MIME);
     });
   } else if (acao === "baixar-pdf") {
     await comBotao(el, async () => {
       const { gerarPdf } = await import("./pdf.js");
-      baixar(await gerarPdf(S.resultado.metrics, { mapa: S.mapa }), "Relatorio_Analise_Epidemiologica.pdf", "application/pdf");
+      baixar(await gerarPdf(S.resultado.metrics, { mapa: S.mapa, idade: idadeRel() }), "Relatorio_Analise_Epidemiologica.pdf", "application/pdf");
     });
   }
 }
@@ -493,6 +493,9 @@ function aplicarConfig() {
   toast("Configuração aplicada — relatório atualizado.");
 }
 
+// idade dos pacientes + faixas escolhidas (null se a planilha não tem idade)
+const idadeRel = () => (S.idades && S.cfg.idade ? { idades: S.idades, cortes: S.cfg.idade.cortes } : null);
+
 // ===================================================================== passo 04 — relatório
 function renderTudo() {
   const saida = $("#saida");
@@ -529,7 +532,7 @@ function renderTudo() {
       ". Use P1, P2, P3... Essas linhas entram nas prevalências, mas ficam de fora da curva cumulativa.");
   }
   msgs.innerHTML = h;
-  $("#relatorio").innerHTML = renderRelatorio(m, S.idades && S.cfg.idade ? { idades: S.idades, cortes: S.cfg.idade.cortes } : null);
+  $("#relatorio").innerHTML = renderRelatorio(m, idadeRel());
   const aba = document.querySelector(`#relatorio .pj-aba[data-aba="${S.abaRel}"]`);
   if (aba) trocarAba(aba);
   desenharGraficos();
