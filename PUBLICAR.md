@@ -92,6 +92,13 @@ A única diferença esperada é a **ordem entre espécies empatadas** nas tabela
 pandas ela não é garantida (varia até com o processador); no site, empates ficam em
 ordem alfabética.
 
+As sugestões de grafia do passo 03 (`site/js/sugestoes.js`) têm um teste próprio,
+que deve terminar com "TODAS AS VERIFICAÇÕES DAS SUGESTÕES PASSARAM":
+
+```bash
+node tests/sugestoes.mjs
+```
+
 ## E o app em Python (Streamlit)?
 
 Continua funcionando (`streamlit run app.py`) e é a referência dos cálculos. Ele

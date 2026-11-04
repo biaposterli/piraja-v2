@@ -4,7 +4,8 @@ import { esc } from "./util.js";
 import { tabela, comIC, textoIC } from "./tabelas.js";
 import { COR, graficoEspecies, graficoTodos, colunas, rosca, linha } from "./graficos.js";
 import { icones } from "./ilustracoes.js";
-import { CATEGORIAS_AMOSTRAGEM } from "./engine.js";
+import { CATEGORIAS_AMOSTRAGEM, categoriaDe } from "./engine.js";
+import { analisarPadroes, N_MIN_MUNICIPIO } from "./padroes.js";
 
 // ---------------------------------------------------------------- pequenos blocos
 /** Series.round(1) do pandas (numpy: arredonda x·10 com empate para o par). */
@@ -314,6 +315,57 @@ function abaBase(m) {
     { k: "especies_str", t: "Espécies", tipo: "txt", quebra: true }], linhas, { altura: 520 }) + `</div>`;
 }
 
+// ---------------------------------------------------------------- padrões (exploratório)
+const fmtP = (v) => (v < 0.001 ? "&lt;0.001" : v.toFixed(3));
+
+function abaPadroes(m) {
+  const r = analisarPadroes(m, (e) => categoriaDe(e, m.config));
+  let h = `<div class="pj-secao">` + secaoTitulo("Padrões territoriais",
+    "Análise exploratória dos municípios de moradia, feita no seu navegador. Ela não muda nenhuma prevalência do relatório: serve para levantar hipóteses e orientar onde olhar com mais atenção.");
+  if (!r.suficiente) return h + info(esc(r.motivo)) + `</div>`;
+  if (r.fora) h += `<div class="pj-legenda">${r.fora} município(s) com menos de ${N_MIN_MUNICIPIO} pacientes ficaram fora desta aba (amostra pequena demais para comparar).</div>`;
+
+  // 1. acima / abaixo do esperado
+  h += subTitulo("Municípios acima ou abaixo do esperado",
+    `Proporção de pacientes com algum parasito patogênico em cada município, comparada com a do conjunto (${r.p0.toFixed(1)}%). ` +
+    "Teste binomial exato; o valor q corrige para o número de municípios testados (Benjamini-Hochberg). q < 0,05: diferença consistente; q < 0,10: indício, a confirmar.");
+  const destaque = r.testes.filter((t) => t.q < 0.10);
+  h += destaque.length
+    ? `<div class="pj-note"><strong>${destaque.length} município(s) com diferença:</strong> ${destaque.map((t) =>
+      `${esc(t.municipio)}${t.uf ? `/${esc(t.uf)}` : ""} (${t.prev.toFixed(1)}%, ${esc(t.situacao)})`).join("; ")}.</div>`
+    : info("Nenhum município se afastou do conjunto além do que o acaso explicaria.");
+  h += expansivel(`Tabela dos ${r.testes.length} municípios`, tabela([
+    { k: "municipio", t: "Município" }, { k: "uf", t: "UF" }, { k: "n", t: "Pacientes", tipo: "int" },
+    { k: "k", t: "Com patogênico", tipo: "int" }, { k: "prev", t: "Prevalência %", tipo: "pct" },
+    { k: "p", t: "Valor p", tipo: "num", fmt: fmtP }, { k: "q", t: "Valor q", tipo: "num", fmt: fmtP },
+    { k: "situacao", t: "Situação" }], r.testes, { altura: 420 }));
+
+  // 2. agrupamento
+  h += `<div style="margin-top:22px"></div>` + subTitulo("Municípios com perfil parasitológico parecido",
+    "Agrupamento automático (aprendizado de máquina não supervisionado, k-médias) pelas prevalências de cada espécie. " +
+    "Os grupos são uma ferramenta de exploração, não uma classificação oficial dos municípios.");
+  if (!r.grupos.length) return h + info(esc(r.motivoGrupos || "Dados insuficientes para o agrupamento.")) + `</div>`;
+  const leituras = {
+    forte: "Os grupos estão bem separados (silhueta ≥ 0,50): os perfis são de fato distintos.",
+    moderada: "Os grupos estão razoavelmente separados (silhueta entre 0,25 e 0,50): há perfis diferentes, mas com municípios de transição.",
+    fraca: "Os grupos se sobrepõem bastante (silhueta abaixo de 0,25): os dados parecem formar um gradiente contínuo, e não grupos bem definidos. Leia os grupos como faixas desse gradiente.",
+  };
+  h += `<div class="pj-note"><strong>${r.grupos.length} grupos · silhueta ${r.silhueta.toFixed(2)}.</strong> ${leituras[r.leitura]}</div>`;
+  h += `<div class="pj-cols c${Math.min(r.grupos.length, 3)}" style="margin-top:12px">` + r.grupos.map((g) => {
+    const dest = g.destaques.length
+      ? `<ul class="pj-grupo-dest">${g.destaques.map((d) => `<li><i>${esc(d.especie)}</i> · ${d.prev.toFixed(1)}% <span>(${d.razao.toFixed(1)}× a média)</span></li>`).join("")}</ul>`
+      : `<div class="pj-legenda">Nenhuma espécie bem acima da média geral.</div>`;
+    return `<div class="pj-metrica pj-grupo"><div class="rot"><span>${esc(g.nome)}</span></div>` +
+      `<div class="val">${g.prevPat.toFixed(1)}%</div><div class="leg">com parasito patogênico · ${g.municipios.length} município(s), ${g.nPac} pacientes</div>` +
+      `<div class="pj-secao-sub" style="margin-top:10px">Mais frequentes que na média</div>${dest}` +
+      expansivel("Municípios do grupo", `<p class="pj-texto">${esc(g.municipios.join(", "))}</p>`) + `</div>`;
+  }).join("") + `</div>`;
+  h += `<div class="pj-legenda" style="margin-top:10px">Como foi feito: municípios com ${N_MIN_MUNICIPIO}+ pacientes conclusivos; prevalência de cada espécie suavizada ` +
+    `(como se cada município tivesse mais 5 pacientes com o perfil geral, para que amostras pequenas não criem perfis extremos), transformada pela raiz quadrada e padronizada; ` +
+    `número de grupos (2 a 5) escolhido pela maior silhueta. "× a média" compara a prevalência no grupo com a do conjunto.</div>`;
+  return h + `</div>`;
+}
+
 function abaExportar() {
   return `<div class="pj-secao">${secaoTitulo("Baixe os relatórios completos")}` +
     `<p class="pj-texto">O Excel traz todas as tabelas em abas separadas, prontas para uso em outras análises. O PDF traz um relatório formatado, pronto para impressão ou envio.</p>` +
@@ -339,9 +391,11 @@ export function renderRelatorio(m) {
   }
   const abas = [["geral", "Visão geral", icones.visao()], ["especies", "Espécies & parasitos", icones.parasito()],
     ["metodos", "Métodos & amostragem", icones.microscopio()], ["base", "Base por paciente", icones.paciente()], ["exportar", "Exportar", icones.baixar()]];
+  if (m.tem_territorio) abas.splice(3, 0, ["padroes", "Padrões territoriais", icones.mapa()]);
   h += `<div class="pj-abas" role="tablist" data-grupo="rel">` + abas.map(([id, t, ic], i) =>
     `<button class="pj-aba" role="tab" aria-selected="${i === 0}" data-aba="rel-${id}">${ic}${esc(t)}</button>`).join("") + `</div>`;
   const conteudo = { geral: abaGeral(m), especies: abaEspecies(m), metodos: abaMetodos(m), base: abaBase(m), exportar: abaExportar() };
+  if (m.tem_territorio) conteudo.padroes = abaPadroes(m);
   h += abas.map(([id], i) => `<div data-painel="rel-${id}" data-grupo="rel"${i ? " hidden" : ""}>${conteudo[id]}</div>`).join("");
   return h + `</section>`;
 }
