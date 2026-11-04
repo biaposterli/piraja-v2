@@ -97,6 +97,7 @@ que deve terminar com "TODAS AS VERIFICAÇÕES DAS SUGESTÕES PASSARAM":
 
 ```bash
 node tests/sugestoes.mjs
+node tests/idade.mjs      # leitura de idade e faixas etárias
 ```
 
 ## E o app em Python (Streamlit)?

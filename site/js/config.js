@@ -18,7 +18,7 @@ export const SHEET_PARASITOS = "Config_Parasitos";
 export const SHEET_METODOS = "Config_Metodos";
 export const SHEET_AMOSTRAS = "Config_Amostras";
 export const SHEET_CRITERIOS = "Config_Criterios";
-export const CONFIG_SHEETS = [SHEET_PARASITOS, SHEET_METODOS, SHEET_AMOSTRAS, SHEET_CRITERIOS];
+export const CONFIG_SHEETS = [SHEET_PARASITOS, SHEET_METODOS, SHEET_AMOSTRAS, SHEET_CRITERIOS, "Config_Idade"];
 
 export const AMOSTRA_FEZES = "Fezes";
 export const AMOSTRA_LAMINA = "Lâmina (Graham)";

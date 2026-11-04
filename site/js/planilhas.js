@@ -4,6 +4,7 @@
 
 import { METHOD_CATALOG, PARASITE_MAP, PATOGENICOS, COMENSAIS, CATEGORIAS_VALIDAS } from "./engine.js";
 import { AMOSTRAS_VALIDAS, CONFIG_SHEETS, abasConfig, abasConfigModelo } from "./config.js";
+import { SHEET_IDADE, abaConfigIdade, analisarIdade } from "./idade.js";
 import { chaveTexto, sortedStr, isNulo } from "./util.js";
 import { carregarExcelJS } from "./tabela.js";
 
@@ -186,7 +187,7 @@ async function leiaMe(wb, ws, texto, logo, parceiros = null) {
 function dados(ws, colunasLamina) {
   const cab = [];
   ws.getRow(1).eachCell({ includeEmpty: false }, (c, col) => { cab[col] = String(c.value); });
-  const LARG = { id_paciente: 14, coleta: 10, nome_paciente: 24, nome_responsavel: 24, status_amostra: 17, status_lamina: 17,
+  const LARG = { id_paciente: 14, coleta: 10, nome_paciente: 24, idade: 16, nome_responsavel: 24, status_amostra: 17, status_lamina: 17,
     bairro: 22, municipio: 20, uf: 7, observacoes: 46 };
   cab.forEach((nome, i) => {
     if (!nome) return;
@@ -334,6 +335,9 @@ const LEIA_ME = "Este modelo traz uma coluna para cada método que o Pirajá rec
   "coloque endereço. Em São Paulo (SP), use o nome do DISTRITO (ex.: Capão Redondo, Itaquera); " +
   "no Distrito Federal, o nome da REGIÃO ADMINISTRATIVA (ex.: Ceilândia, Taguatinga, Plano Piloto) " +
   "e 'Brasília' como município.\n\n" +
+  "Idade (opcional): preencha a coluna idade (em anos, ou com meses: '18 meses', '2 anos e 6 meses') " +
+  "para o relatório mostrar a prevalência por faixa etária. As faixas são escolhidas no site (há faixas " +
+  "padrão para creches, faixas de 5 anos e ciclos de vida) ou na aba Config_Idade.\n\n" +
   "CONFIGURAÇÃO DA ANÁLISE (opcional) — abas Config_Parasitos, Config_Metodos, " +
   "Config_Amostras e Config_Criterios: defina quais parasitos entram na análise (Incluir = Sim/Não), se cada " +
   "um é Patogênico ou Comensal, quais métodos entram e se são de Fezes ou de Lâmina " +
@@ -359,11 +363,11 @@ export async function gerarModelo() {
   const ExcelJS = await carregarExcelJS();
   const colFecal = METHOD_CATALOG.filter((m) => m[3] === "fecal").map((m) => m[0]);
   const colLamina = METHOD_CATALOG.filter((m) => m[3] === "lamina").map((m) => m[0]);
-  const headers = ["id_paciente", "coleta", "nome_paciente", "nome_responsavel", "bairro", "municipio", "uf",
+  const headers = ["id_paciente", "coleta", "nome_paciente", "idade", "nome_responsavel", "bairro", "municipio", "uf",
     "status_amostra", "status_lamina", ...colLamina, ...colFecal, "observacoes"];
   const linhaEx = (id, coleta, stA, stL, valores, obs) => {
     const row = {
-      id_paciente: id, coleta, nome_paciente: "Exemplo Da Silva", nome_responsavel: "Nome Do Responsável",
+      id_paciente: id, coleta, nome_paciente: "Exemplo Da Silva", idade: id === "F-001" ? 4 : "2 anos e 6 meses", nome_responsavel: "Nome Do Responsável",
       bairro: id === "F-001" ? "Lagoa Nova" : "Felipe Camarão", municipio: "Natal", uf: "RN",
       status_amostra: stA, status_lamina: stL, observacoes: obs,
     };
@@ -397,6 +401,7 @@ export async function gerarModelo() {
     ["id_paciente", "Código único do paciente (repete nas linhas de P1/P2/P3)", "texto livre, ex.: F-001"],
     ["coleta", "Qual coleta essa linha representa", "P1, P2, P3 ... (quantas o estudo tiver)"],
     ["nome_paciente", "Nome da criança", "texto livre"],
+    ["idade", "Idade do paciente na coleta (opcional — usada na análise por faixa etária). Pode repetir em todas as linhas do paciente ou só na P1. Alternativas: uma coluna idade_meses, ou data_nascimento + data_coleta.", "anos (ex.: 4 ou 4,5) ou texto com meses (ex.: '18 meses', '2 anos e 6 meses')"],
     ["nome_responsavel", "Nome do responsável (opcional)", "texto livre ou vazio"],
     ["bairro", "Bairro onde o paciente MORA (opcional — usado na prevalência por bairro e no mapa). Só o nome do bairro, nunca o endereço. Em São Paulo/SP use o DISTRITO; no DF, a REGIÃO ADMINISTRATIVA (com municipio = Brasília).", "texto, ex.: Lagoa Nova"],
     ["municipio", "Município onde o paciente mora (opcional, mas necessário para o bairro: há bairros com o mesmo nome em cidades diferentes)", "texto, ex.: Natal"],
@@ -429,18 +434,20 @@ export async function gerarModelo() {
 }
 
 // ======================================================================= configuração
-export async function configXlsx(par, met, n, crit) {
+const comIdade = (abas, cortes) => (cortes ? { ...abas, [SHEET_IDADE]: abaConfigIdade(cortes) } : abas);
+
+export async function configXlsx(par, met, n, crit, cortesIdade = null) {
   const ExcelJS = await carregarExcelJS();
   const wb = new ExcelJS.Workbook();
-  addConfigAbas(wb, abasConfig(par, met, n, crit));
+  addConfigAbas(wb, comIdade(abasConfig(par, met, n, crit), cortesIdade));
   return paraBytes(wb);
 }
 
 /** A planilha enviada + abas Config_* (substitui as antigas, se houver). */
-export async function planilhaComConfig(buffer, nomeArquivo, planilhaLida, par, met, n, crit) {
+export async function planilhaComConfig(buffer, nomeArquivo, planilhaLida, par, met, n, crit, cortesIdade = null) {
   const ExcelJS = await carregarExcelJS();
   const ehConfig = new Set(CONFIG_SHEETS.map(chaveTexto));
-  const abas = abasConfig(par, met, n, crit);
+  const abas = comIdade(abasConfig(par, met, n, crit), cortesIdade);
   let wb = null;
   if (!/\.xls$/i.test(nomeArquivo)) {
     try {
@@ -483,6 +490,9 @@ const DESCRICAO_ABAS = {
   CochranArmitage_NPotes: "Teste de tendência de Cochran-Armitage para o número de coletas.",
   Prevalencia_Municipio: "Prevalência por município de moradia, com IC 95%.",
   Prevalencia_Bairro: "Prevalência por bairro de moradia, com IC 95%.",
+  Prevalencia_Faixa_Etaria: "Prevalência por faixa etária (fezes e lâmina separadas), com IC 95% e tendência de Cochran-Armitage.",
+  Especies_Faixa_Etaria: "Prevalência (%) de cada espécie em cada faixa etária (fezes).",
+  Config_Idade: "Configuração usada: limites das faixas etárias.",
   Config_Parasitos: "Configuração usada: parasitos incluídos e classificação.",
   Config_Metodos: "Configuração usada: métodos incluídos e tipo de amostra.",
   Config_Amostras: "Configuração usada: número de amostras por paciente.",
@@ -503,16 +513,18 @@ const BASE_COLS = ["id_paciente", "nome_paciente", "bairro", "municipio", "uf", 
   "especies_fecais_str", "especies_lamina_str", "especies_str", "n_especies_distintas_fecais", "poliparasitado_fecal",
   "tem_patogenico", "tem_comensal", "positivo_fecal_patogenico", "positivo_lamina_patogenico"];
 
-export function abasRelatorio(m, cfgEstado) {
+export function abasRelatorio(m, cfgEstado, idade = null) {
   const nomes = m.metodos_ativos_nomes;
   const abas = [];
   const pp = m.por_paciente.map((r) => {
     const o = {};
     for (const c of BASE_COLS) o[c] = r[c];
     for (const nm of nomes) { o[`positivo_${nm}`] = r.metodos[nm].positivo; o[`status_${nm}`] = r.metodos[nm].status; }
+    if (idade) { const a = idade.idades.porId.get(r.id_paciente); o.idade_anos = a === undefined ? null : Math.round(a * 100) / 100; }
     return o;
   });
-  abas.push(["Base_por_Crianca", matriz(pp, [...BASE_COLS, ...nomes.flatMap((nm) => [`positivo_${nm}`, `status_${nm}`])])]);
+  const colsBase = [...BASE_COLS.slice(0, 2), ...(idade ? ["idade_anos"] : []), ...BASE_COLS.slice(2)];
+  abas.push(["Base_por_Crianca", matriz(pp, [...colsBase, ...nomes.flatMap((nm) => [`positivo_${nm}`, `status_${nm}`])])]);
   abas.push(["Categoria_Amostragem", [["categoria_amostragem", "n"], ...Object.entries(m.cat_counts)]]);
   const linhaPrev = (metrica, valor, base, inf, sup) => ({ metrica, valor_pct: base.length ? valor : null, ic95_inf: inf, ic95_sup: sup, n_pacientes: base.length });
   abas.push(["Prevalencia_Geral", matriz([
@@ -554,11 +566,28 @@ export function abasRelatorio(m, cfgEstado) {
     if (m.territorio_municipio.length) abas.push(["Prevalencia_Municipio", matriz(m.territorio_municipio, ["municipio", "uf", ...TERR])]);
     if (m.territorio_bairro.length) abas.push(["Prevalencia_Bairro", matriz(m.territorio_bairro, ["bairro", "municipio", "uf", ...TERR])]);
   }
+  if (idade) {
+    const r = analisarIdade(m, idade.idades, idade.cortes);
+    const um = (v) => (v === null ? null : Math.round(v * 10) / 10);
+    const linhas = [];
+    for (const [d, amostra] of [[r.fezes, "Fezes"], [r.lamina, "Lâmina"]]) {
+      for (const l of d.linhas) {
+        linhas.push({ amostra, faixa_etaria: l.faixa, n_pacientes: l.n, n_positivos: l.k, prevalencia: um(l.prev), ic95_inf: l.ic95_inf, ic95_sup: l.ic95_sup,
+          n_positivos_patogenico: l.k_pat, prevalencia_patogenico: um(l.prev_pat), ic95_inf_patogenico: l.pat_ic95_inf, ic95_sup_patogenico: l.pat_ic95_sup });
+      }
+      linhas.push({ amostra, faixa_etaria: "Tendência (Cochran-Armitage) — p-valor", prevalencia: d.tendencia.p_valor, prevalencia_patogenico: d.tendenciaPat.p_valor });
+    }
+    abas.push(["Prevalencia_Faixa_Etaria", matriz(linhas, ["amostra", "faixa_etaria", "n_pacientes", "n_positivos", "prevalencia", "ic95_inf", "ic95_sup",
+      "n_positivos_patogenico", "prevalencia_patogenico", "ic95_inf_patogenico", "ic95_sup_patogenico"])]);
+    abas.push(["Especies_Faixa_Etaria", [["especie", "categoria", ...r.fezes.linhas.map((l) => `${l.faixa} (n=${l.n})`)],
+      ...r.especies.map((e) => [e.especie, e.categoria, ...e.valores.map(um)])]]);
+  }
   if (m.excluidos_criterios.length) {
     abas.push(["Pacientes_Excluidos", [["id_paciente", "nome_paciente", "motivo_exclusao"],
       ...m.excluidos_criterios.map((r) => [r.id_paciente, r.nome_paciente, r.motivo])]]);
   }
   if (cfgEstado) for (const [nome, mat] of Object.entries(abasConfig(cfgEstado.par, cfgEstado.met, cfgEstado.n, cfgEstado.crit))) abas.push([nome, mat]);
+  if (idade) abas.push([SHEET_IDADE, abaConfigIdade(idade.cortes)]);
   return abas;
 }
 
@@ -645,11 +674,11 @@ export function agoraTexto(d = new Date()) {
   return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} às ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-export async function relatorioExcel(m, cfgEstado) {
+export async function relatorioExcel(m, cfgEstado, idade = null) {
   const ExcelJS = await carregarExcelJS();
   const wb = new ExcelJS.Workbook();
   wb.creator = "Pirajá";
-  const abas = abasRelatorio(m, cfgEstado);
+  const abas = abasRelatorio(m, cfgEstado, idade);
   const wsCapa = wb.addWorksheet("Capa");
   for (const [nome, mat] of abas) {
     const ws = wb.addWorksheet(nome);

@@ -2,7 +2,9 @@
 
 import { esc } from "./util.js";
 import { tabela, comIC, textoIC } from "./tabelas.js";
-import { COR, COR_CATEGORIA, graficoEspecies, graficoTodos, colunas, barrasH, linha, funil } from "./graficos.js";
+import { COR, COR_CATEGORIA, graficoEspecies, graficoTodos, colunas, barrasH, linha, funil, pontosIC } from "./graficos.js";
+import { analisarIdade } from "./idade.js";
+import { SECOES_PDF, lerOpcoesPdf } from "./opcoes-pdf.js";
 import { icones } from "./ilustracoes.js";
 import { CATEGORIAS_AMOSTRAGEM } from "./engine.js";
 import { analisarPadroes, limiteFunil, N_MIN_FUNIL, N_MIN_CALOR } from "./padroes.js";
@@ -391,7 +393,7 @@ function blocoCalor(c) {
   let regAnt = null;
   const corpo = c.linhas.map((l) => (l.regiao !== regAnt && (regAnt = l.regiao) ? `<tr class="reg"><th colspan="${c.especies.length + 1}">${REG[l.regiao] || "Sem UF"}</th></tr>` : "") + `<tr><th scope="row">${esc(l.nome)} <span class="n">${l.n}</span></th>` + l.valores.map((v, j) => {
     const a = c.maxCol[j] ? v / c.maxCol[j] : 0;
-    return v ? `<td class="num" style="--a:${(0.04 + 0.62 * a ** 1.6).toFixed(2)}"${a > 0.75 ? ' data-escuro=""' : ""}>${v.toFixed(1)}</td>` : `<td class="num zero">·</td>`;
+    return v ? `<td class="num" style="--a:${(0.05 + 0.55 * a).toFixed(2)}"${a > 0.75 ? ' data-escuro=""' : ""}>${v.toFixed(1)}</td>` : `<td class="num zero">·</td>`;
   }).join("") + `</tr>`).join("");
   h += `<div class="pj-legenda">Prevalência (%) de cada espécie em cada município, agrupados por região. A cor compara os municípios <b>dentro de cada espécie</b>: a célula mais escura é onde aquela espécie foi mais frequente. Ponto colorido no cabeçalho: <span class="pj-cat-ponto" style="background:${COR.COBRE}"></span> patogênico, <span class="pj-cat-ponto" style="background:${COR.FOLHA}"></span> comensal, <span class="pj-cat-ponto" style="background:${COR.SALVIA}"></span> não classificado.</div>`;
   h += `<div class="pj-tabela-wrap pj-calor-wrap"><table class="pj-calor"><thead><tr><th>Município <span class="n">n</span></th>${cab}</tr></thead><tbody>${corpo}</tbody></table></div>`;
@@ -410,16 +412,90 @@ function abaPadroes(m) {
   return h + `</div>`;
 }
 
-function abaExportar() {
-  return `<div class="pj-secao">${secaoTitulo("Baixe os relatórios completos")}` +
-    `<p class="pj-texto">O Excel traz todas as tabelas em abas separadas, prontas para uso em outras análises. O PDF traz um relatório formatado, pronto para impressão ou envio.</p>` +
-    `<div class="pj-btns"><button class="pj-btn" type="button" data-acao="baixar-excel">${icones.baixar("#F4F1EA", "#F4F1EA")} Baixar relatório em Excel</button>` +
-    `<button class="pj-btn" type="button" data-acao="baixar-pdf">${icones.baixar("#F4F1EA", "#F4F1EA")} Baixar relatório em PDF</button></div>` +
-    `<div class="pj-legenda" id="nota-mapa-pdf" style="margin-top:10px"></div></div>`;
+// ---------------------------------------------------------------- faixa etária
+const fmtP3 = (p) => (p === null || p === undefined ? "—" : p < 0.001 ? "< 0.001" : p.toFixed(3));
+
+function blocoIdade(d, titulo, nomeAmostra) {
+  let h = subTitulo(titulo);
+  if (!d.nTotal) return h + info(`Nenhum paciente com idade e resultado conclusivo em ${nomeAmostra}.`);
+  const iguais = d.linhas.every((l) => l.k === l.k_pat);
+  const series = iguais ? [{ rotulo: "Com parasito", cor: COR.COBRE }]
+    : [{ rotulo: "Todos os parasitos", cor: COR.MATA }, { rotulo: "Só patogênicos", cor: COR.COBRE }];
+  const grupos = d.linhas.map((l) => {
+    const um = (v, inf, sup, k, rot) => (l.n ? { v, inf, sup, dica: `${l.faixa} · ${rot}\n${k} de ${l.n} pacientes (${v.toFixed(1)}%)\nIC 95%: ${inf.toFixed(1)}–${sup.toFixed(1)}%` } : null);
+    const todos = um(l.prev, l.ic95_inf, l.ic95_sup, l.k, iguais ? "com parasito" : "todos os parasitos");
+    const pat = um(l.prev_pat, l.pat_ic95_inf, l.pat_ic95_sup, l.k_pat, "só patogênicos");
+    return { rotulo: `${l.faixa}`, valores: iguais ? [pat] : [todos, pat] };
+  });
+  h += grafico((w) => pontosIC(grupos, series, { largura: Math.min(w, 760), tituloX: "Prevalência (%) com IC 95%" }));
+  const ic = (a, b) => (a === null ? "—" : `${a.toFixed(1)}–${b.toFixed(1)}`);
+  h += tabela([{ k: "faixa", t: "Faixa etária" }, { k: "n", t: "Pacientes", tipo: "int" },
+    ...(iguais ? [] : [{ k: "prev", t: "Todos %", tipo: "pct" }, { k: "ic", t: "IC 95%" }]),
+    { k: "prev_pat", t: iguais ? "Com parasito %" : "Só patogênicos %", tipo: "pct" }, { k: "icp", t: "IC 95%" }],
+  d.linhas.map((l) => ({ ...l, ic: ic(l.ic95_inf, l.ic95_sup), icp: ic(l.pat_ic95_inf, l.pat_ic95_sup) })), { ordenavel: false });
+  const t1 = d.tendencia, t2 = d.tendenciaPat;
+  if (d.linhas.filter((l) => l.n).length >= 3 && (t1.p_valor !== null || t2.p_valor !== null)) {
+    const parte = (t, rot) => (t.p_valor === null ? "" : `${rot} p = ${fmtP3(t.p_valor)}${t.p_valor < 0.05 ? (t.estatistica_z > 0 ? " (aumenta com a idade)" : " (diminui com a idade)") : ""}`);
+    const partes = iguais ? [parte(t2, "")] : [parte(t1, "todos os parasitos:"), parte(t2, "só patogênicos:")];
+    h += `<div class="pj-legenda">Tendência com a idade (Cochran-Armitage): ${partes.filter(Boolean).join(" · ")}.` +
+      ajuda("Testa se a positividade sobe ou desce de forma ordenada ao longo das faixas. p < 0,05 indica tendência. Faixas vazias não entram.") + `</div>`;
+  }
+  return h;
+}
+
+function abaIdade(m, idade) {
+  const r = analisarIdade(m, idade.idades, idade.cortes);
+  let h = `<div class="pj-secao">` + secaoTitulo("Prevalência por faixa etária",
+    "Mesmos denominadores do relatório (pacientes com resultado conclusivo em cada tipo de amostra), com fezes e lâmina separadas. Pacientes sem idade na planilha ficam fora desta aba. As faixas são definidas no passo 03, aba Faixa etária.");
+  if (idade.idades.nSemIdade) h += `<div class="pj-legenda">${idade.idades.nSemIdade} paciente(s) sem idade ficaram fora.</div>`;
+  h += blocoIdade(r.fezes, "Fezes", "fezes");
+  h += `<div class="pj-espaco"></div>` + blocoIdade(r.lamina, "Lâmina", "lâmina");
+  // espécies x faixa (fezes)
+  const esp = r.especies.filter((e) => e.valores.some((v) => v));
+  if (esp.length && r.fezes.linhas.length > 1) {
+    h += `<div class="pj-espaco"></div>` + subTitulo("Espécies por faixa etária (fezes)");
+    h += `<div class="pj-legenda">Prevalência (%) de cada espécie em cada faixa. A cor compara as faixas <b>dentro de cada espécie</b>: a célula mais escura é a faixa em que aquela espécie foi mais frequente.</div>`;
+    const cab = r.fezes.linhas.map((l) => `<th class="num">${esc(l.faixa)} <span class="n">${l.n}</span></th>`).join("");
+    const corpo = esp.map((e) => {
+      const mx = Math.max(...e.valores.map((v) => v ?? 0));
+      return `<tr><th scope="row"><span class="pj-cat-ponto" style="background:${COR_CATEGORIA[e.categoria] || COR.SALVIA}"></span><i>${esc(e.especie)}</i></th>` +
+        e.valores.map((v) => {
+          if (v === null) return `<td class="num zero">—</td>`;
+          if (!v) return `<td class="num zero">·</td>`;
+          const a = mx ? v / mx : 0;
+          return `<td class="num" style="--a:${(0.05 + 0.55 * a).toFixed(2)}"${a > 0.75 ? " data-escuro" : ""}>${v.toFixed(1)}</td>`;
+        }).join("") + `</tr>`;
+    }).join("");
+    h += `<div class="pj-tabela-wrap pj-calor-wrap"><table class="pj-calor"><thead><tr><th>Espécie</th>${cab}</tr></thead><tbody>${corpo}</tbody></table></div>`;
+  }
+  return h + `</div>`;
+}
+
+function abaExportar(m, idade) {
+  const op = lerOpcoesPdf();
+  const tem = { territorio: m.tem_territorio, idade: Boolean(idade), mapa: m.tem_territorio };
+  const secoes = SECOES_PDF.filter((s) => !s.requer || tem[s.requer]);
+  const grupos = [...new Set(secoes.map((s) => s.grupo))];
+  const item = (s) => {
+    let extra = "";
+    if (s.id === "bairro") {
+      extra = `<span class="pj-pdf-extra">só bairros com pelo menos <input type="number" min="1" step="1" data-pdf-bairro value="${op.bairroMin}" aria-label="Mínimo de pacientes por bairro"> paciente(s)</span>`;
+    }
+    if (s.id === "mapa") extra = `<span class="pj-pdf-extra" id="pdf-mapa-nota">gere o mapa na aba Visão geral para incluí-lo</span>`;
+    return `<label class="pj-check"><input type="checkbox" data-pdf="${s.id}"${op.secoes[s.id] !== false ? " checked" : ""}><span>${esc(s.nome)}</span></label>${extra}`;
+  };
+  return `<div class="pj-secao">${secaoTitulo("Baixe os relatórios completos")}<div class="pj-cols c2 pj-exportar">` +
+    `<div class="pj-metrica"><div class="pj-secao-sub">Excel</div><p class="pj-texto">Todas as tabelas em abas separadas, prontas para outras análises. Sai sempre completo.</p>` +
+    `<button class="pj-btn" type="button" data-acao="baixar-excel">${icones.baixar("#F4F1EA", "#F4F1EA")} Baixar relatório em Excel</button></div>` +
+    `<div class="pj-metrica"><div class="pj-secao-sub">PDF</div><p class="pj-texto">Relatório formatado, para imprimir ou enviar. Escolha o que entra: o resumo inicial e a nota metodológica saem sempre.</p>` +
+    `<div class="pj-pdf-atalhos">Marcar: <a href="#" data-acao="pdf-sel" data-sel="tudo">tudo</a> · <a href="#" data-acao="pdf-sel" data-sel="resumido">resumido</a> · <a href="#" data-acao="pdf-sel" data-sel="nada">nada</a></div>` +
+    grupos.map((g) => `<fieldset class="pj-pdf-grupo"><legend>${esc(g)}</legend>${secoes.filter((s) => s.grupo === g).map(item).join("")}</fieldset>`).join("") +
+    `<button class="pj-btn" type="button" data-acao="baixar-pdf" style="margin-top:12px">${icones.baixar("#F4F1EA", "#F4F1EA")} Baixar relatório em PDF</button>` +
+    `<div class="pj-legenda" id="nota-mapa-pdf" style="margin-top:10px"></div></div></div></div>`;
 }
 
 // ---------------------------------------------------------------- passo 04 inteiro
-export function renderRelatorio(m) {
+export function renderRelatorio(m, idade = null) {
   const nomes = m.metodos_ativos_nomes;
   let h = `<section class="pj-passo" id="passo-4"><div class="pj-step"><div class="badge">4</div><h2>Relatório da análise</h2></div>` +
     `<div class="pj-legenda">${m.total} pacientes ${m.criterios.length ? "incluídos" : "cadastrados"} · ${m.fecal.length} com amostra fecal entregue · ` +
@@ -436,10 +512,12 @@ export function renderRelatorio(m) {
   const abas = [["geral", "Visão geral", icones.visao()], ["especies", "Espécies & parasitos", icones.parasito()],
     ["metodos", "Métodos & amostragem", icones.microscopio()], ["base", "Base por paciente", icones.paciente()], ["exportar", "Exportar", icones.baixar()]];
   if (m.tem_territorio) abas.splice(3, 0, ["padroes", "Padrões territoriais", icones.mapa()]);
+  if (idade) abas.splice(3, 0, ["idade", "Faixa etária", icones.paciente()]);
   h += `<div class="pj-abas" role="tablist" data-grupo="rel">` + abas.map(([id, t, ic], i) =>
     `<button class="pj-aba" role="tab" aria-selected="${i === 0}" data-aba="rel-${id}">${ic}${esc(t)}</button>`).join("") + `</div>`;
-  const conteudo = { geral: abaGeral(m), especies: abaEspecies(m), metodos: abaMetodos(m), base: abaBase(m), exportar: abaExportar() };
+  const conteudo = { geral: abaGeral(m), especies: abaEspecies(m), metodos: abaMetodos(m), base: abaBase(m), exportar: abaExportar(m, idade) };
   if (m.tem_territorio) conteudo.padroes = abaPadroes(m);
+  if (idade) conteudo.idade = abaIdade(m, idade);
   h += abas.map(([id], i) => `<div data-painel="rel-${id}" data-grupo="rel"${i ? " hidden" : ""}>${conteudo[id]}</div>`).join("");
   return h + `</section>`;
 }
