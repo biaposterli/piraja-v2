@@ -1,28 +1,24 @@
 // Padrões territoriais (exploratório) — Pirajá · Entero
 //
-// Duas análises sobre os municípios de moradia, calculadas no navegador a partir
-// da mesma base da prevalência por território (pacientes com resultado
-// conclusivo):
+// Leituras dos municípios de moradia, calculadas no navegador. Fezes e lâmina
+// ficam SEMPRE separadas, como no resto do Pirajá, e nada aqui altera as
+// prevalências do relatório.
 //
-// 1. Municípios acima (ou abaixo) do esperado: a proporção de pacientes com
-//    parasito patogênico em cada município é comparada com a do conjunto todo
-//    (teste binomial exato, bilateral) e os valores-p são corrigidos para
-//    múltiplas comparações (Benjamini-Hochberg, "q").
-// 2. Agrupamento por perfil parasitológico (aprendizado de máquina não
-//    supervisionado): k-médias sobre as prevalências por espécie de cada
-//    município, suavizadas para que municípios com poucos pacientes não fiquem
-//    com perfis extremos. O número de grupos é escolhido pela silhueta, e a
-//    própria silhueta diz se os grupos são bem separados ou se os dados formam
-//    um gradiente contínuo.
-//
-// Nada aqui altera as prevalências do relatório: é uma camada de leitura.
+// 1. Gráfico de funil (Spiegelhalter, 2005): cada município é um ponto (nº de
+//    pacientes × % com parasito patogênico). As faixas mostram até onde a
+//    proporção pode variar só por acaso, dado o tamanho da amostra, em torno da
+//    média do levantamento — limites binomiais exatos de 95% e 99,8%. A média
+//    de amostras entregues por paciente acompanha cada município, porque mais
+//    coletas aumentam a chance de encontrar parasitos.
+// 2. Mapa de calor município × espécie (fezes): a prevalência de cada espécie
+//    em cada município; a cor compara os municípios dentro de cada espécie.
 
 import { chaveTerritorio } from "./engine.js";
 
-export const N_MIN_MUNICIPIO = 10; // municípios com menos pacientes ficam de fora
-const PSEUDO = 5; // suavização: equivale a somar 5 pacientes com o perfil geral
+export const N_MIN_FUNIL = 5;    // municípios menores ficam fora do funil
+export const N_MIN_CALOR = 10;   // e do mapa de calor
 
-// ---------------------------------------------------------------- estatística
+// ---------------------------------------------------------------- binomial
 function lnGama(x) {
   const c = [76.18009172947146, -86.50532032941677, 24.01409824083091, -1.231739572450155, 0.1208650973866179e-2, -0.5395239384953e-5];
   let y = x, t = x + 5.5;
@@ -36,28 +32,21 @@ function binomPmf(k, n, p) {
   if (p >= 1) return k === n ? 1 : 0;
   return Math.exp(lnGama(n + 1) - lnGama(k + 1) - lnGama(n - k + 1) + k * Math.log(p) + (n - k) * Math.log(1 - p));
 }
-/** Teste binomial exato bilateral (mesma regra do scipy: soma das prob. ≤ a observada). */
-export function binomialBilateral(k, n, p) {
-  const pk = binomPmf(k, n, p);
-  let s = 0;
-  for (let i = 0; i <= n; i++) {
-    const pi = binomPmf(i, n, p);
-    if (pi <= pk * (1 + 1e-7)) s += pi;
+/**
+ * Limite do funil para a probabilidade acumulada q (ex.: 0,975 ou 0,025), com a
+ * interpolação de Spiegelhalter para a variável discreta. Devolve proporção 0–1.
+ */
+export function limiteFunil(n, p0, q) {
+  let F = 0, r = 0, Fant = 0;
+  for (; r <= n; r++) {
+    Fant = F;
+    F += binomPmf(r, n, p0);
+    if (F >= q) break;
   }
-  return Math.min(1, s);
-}
-/** Benjamini-Hochberg: valores q na mesma ordem dos valores p. */
-export function benjaminiHochberg(ps) {
-  const m = ps.length;
-  const ordem = ps.map((p, i) => [p, i]).sort((a, b) => a[0] - b[0]);
-  const q = Array(m);
-  let min = 1;
-  for (let r = m - 1; r >= 0; r--) {
-    const [p, i] = ordem[r];
-    min = Math.min(min, (p * m) / (r + 1));
-    q[i] = min;
-  }
-  return q;
+  r = Math.min(r, n);
+  const pr = F - Fant;
+  const alfa = pr > 0 ? (F - q) / pr : 0;
+  return Math.max(0, Math.min(1, (r - alfa) / n));
 }
 
 // ---------------------------------------------------------------- base por município
@@ -82,134 +71,54 @@ function porMunicipio(base) {
   return [...grupos.values()];
 }
 
-// ---------------------------------------------------------------- k-médias
-function rngSemente(s) {
-  return () => ((s = (Math.imul(s, 1103515245) + 12345) >>> 0) / 4294967296);
-}
-const dist2 = (a, b) => a.reduce((t, v, i) => t + (v - b[i]) ** 2, 0);
+const REGIAO = {
+  AC: 1, AM: 1, AP: 1, PA: 1, RO: 1, RR: 1, TO: 1,
+  AL: 2, BA: 2, CE: 2, MA: 2, PB: 2, PE: 2, PI: 2, RN: 2, SE: 2,
+  DF: 3, GO: 3, MS: 3, MT: 3, ES: 4, MG: 4, RJ: 4, SP: 4, PR: 5, RS: 5, SC: 5,
+};
+const nomeMun = (g) => `${g.municipio}${g.uf ? `/${g.uf}` : ""}`;
 
-function kmedias(X, k, rnd, iter = 100) {
-  // inicialização k-means++
-  const c = [X[Math.floor(rnd() * X.length)]];
-  while (c.length < k) {
-    const d = X.map((x) => Math.min(...c.map((ci) => dist2(x, ci))));
-    const tot = d.reduce((a, b) => a + b, 0);
-    let r = rnd() * tot, i = 0;
-    while (i < d.length - 1 && (r -= d[i]) > 0) i++;
-    c.push(X[i]);
-  }
-  let rot = Array(X.length).fill(-1);
-  for (let it = 0; it < iter; it++) {
-    const novo = X.map((x) => { let m = 0; for (let j = 1; j < k; j++) if (dist2(x, c[j]) < dist2(x, c[m])) m = j; return m; });
-    const mudou = novo.some((v, i) => v !== rot[i]);
-    rot = novo;
-    for (let j = 0; j < k; j++) {
-      const mem = X.filter((_, i) => rot[i] === j);
-      if (mem.length) c[j] = mem[0].map((_, d) => mem.reduce((t, x) => t + x[d], 0) / mem.length);
-    }
-    if (!mudou) break;
-  }
-  const inercia = X.reduce((t, x, i) => t + dist2(x, c[rot[i]]), 0);
-  return { rot, inercia };
-}
-
-function silhueta(X, rot) {
-  const k = Math.max(...rot) + 1;
-  const D = X.map((a) => X.map((b) => Math.sqrt(dist2(a, b))));
-  let soma = 0;
-  X.forEach((_, i) => {
-    const media = (j) => { const idx = rot.map((r, t) => (r === j && t !== i ? t : -1)).filter((t) => t >= 0); return idx.length ? idx.reduce((s, t) => s + D[i][t], 0) / idx.length : 0; };
-    const nProprio = rot.filter((r) => r === rot[i]).length;
-    if (nProprio <= 1) return; // silhueta 0
-    const a = media(rot[i]);
-    let b = Infinity;
-    for (let j = 0; j < k; j++) if (j !== rot[i] && rot.includes(j)) b = Math.min(b, media(j));
-    soma += (b - a) / Math.max(a, b);
-  });
-  return soma / X.length;
-}
-
-// ---------------------------------------------------------------- análise
-/**
- * metrics (computeMetrics) -> { suficiente, motivo, municipios, testes, grupos, k, silhueta, leitura, especies }.
- * catDe(especie) devolve a categoria clínica configurada.
- */
-export function analisarPadroes(metrics, catDe) {
-  const base = metrics.combinada_base || [];
-  const todos = porMunicipio(base);
-  const munis = todos.filter((g) => g.pacientes.length >= N_MIN_MUNICIPIO);
-  const fora = todos.length - munis.length;
-  const res = { suficiente: false, motivo: "", nMunicipios: todos.length, fora, testes: [], grupos: [] };
-  if (munis.length < 3) {
-    res.motivo = `São necessários pelo menos 3 municípios com ${N_MIN_MUNICIPIO} ou mais pacientes com resultado conclusivo (há ${munis.length}).`;
-    return res;
-  }
-  res.suficiente = true;
-  const temPat = (r) => r.positivo_fecal_patogenico || r.positivo_lamina_patogenico;
-
-  // 1. acima / abaixo do esperado (patogênicos)
+// ---------------------------------------------------------------- funil
+function funil(rows, campoPos, campoEsforco) {
+  const todos = porMunicipio(rows);
+  const munis = todos.filter((g) => g.pacientes.length >= N_MIN_FUNIL);
+  if (munis.length < 3) return { suficiente: false, nMunicipios: todos.length, nOk: munis.length };
   const nTot = munis.reduce((t, g) => t + g.pacientes.length, 0);
-  const posTot = munis.reduce((t, g) => t + g.pacientes.filter(temPat).length, 0);
+  const posTot = munis.reduce((t, g) => t + g.pacientes.filter((r) => r[campoPos]).length, 0);
   const p0 = posTot / nTot;
-  const testes = munis.map((g) => {
-    const n = g.pacientes.length, k = g.pacientes.filter(temPat).length;
-    return { municipio: g.municipio, uf: g.uf, n, k, prev: (100 * k) / n, p: binomialBilateral(k, n, p0) };
-  });
-  const q = benjaminiHochberg(testes.map((t) => t.p));
-  testes.forEach((t, i) => {
-    t.q = q[i];
-    const lado = t.prev / 100 > p0 ? "acima" : "abaixo";
-    t.situacao = t.q < 0.05 ? `${lado} do esperado` : t.q < 0.10 ? `indício: ${lado}` : "dentro do esperado";
-  });
-  res.p0 = 100 * p0;
-  res.testes = testes.sort((a, b) => a.q - b.q || b.prev - a.prev);
+  const pontos = munis.map((g) => {
+    const n = g.pacientes.length, k = g.pacientes.filter((r) => r[campoPos]).length;
+    const prev = k / n;
+    const esforco = g.pacientes.reduce((t, r) => t + (Number(r[campoEsforco]) || 0), 0) / n;
+    const fora = (q1, q2) => prev > limiteFunil(n, p0, q2) ? "acima" : prev < limiteFunil(n, p0, q1) ? "abaixo" : "";
+    const f998 = fora(0.001, 0.999), f95 = fora(0.025, 0.975);
+    const situacao = f998 ? `${f998} da faixa de 99,8%` : f95 ? `${f95} da faixa de 95%` : "dentro do esperado";
+    return { nome: nomeMun(g), municipio: g.municipio, uf: g.uf, n, k, prev: 100 * prev, esforco, f95, f998, situacao };
+  }).sort((a, b) => b.n - a.n);
+  const esf = pontos.map((p) => p.esforco);
+  return {
+    suficiente: true, p0: 100 * p0, pontos, nMunicipios: todos.length, foraFunil: todos.length - munis.length,
+    esforcoMin: Math.min(...esf), esforcoMax: Math.max(...esf),
+  };
+}
 
-  // 2. agrupamento por perfil de espécies
-  const especies = [...new Set(munis.flatMap((g) => g.pacientes.flatMap((r) => r.especies)))].sort();
-  if (munis.length < 6 || especies.length < 2) {
-    res.motivoGrupos = `O agrupamento precisa de pelo menos 6 municípios com ${N_MIN_MUNICIPIO}+ pacientes e 2 espécies (há ${munis.length} e ${especies.length}).`;
-    return res;
-  }
-  const geral = especies.map((e) => base.filter((r) => r.especies.includes(e)).length / base.length);
-  const prev = munis.map((g) => especies.map((e, j) => {
-    const c = g.pacientes.filter((r) => r.especies.includes(e)).length;
-    return (c + PSEUDO * geral[j]) / (g.pacientes.length + PSEUDO);
-  }));
-  // raiz quadrada (estabiliza a variância de proporções) e padronização por espécie
-  const R = prev.map((l) => l.map(Math.sqrt));
-  const med = especies.map((_, j) => R.reduce((t, l) => t + l[j], 0) / R.length);
-  const dp = especies.map((_, j) => Math.sqrt(R.reduce((t, l) => t + (l[j] - med[j]) ** 2, 0) / R.length) || 1);
-  const X = R.map((l) => l.map((v, j) => (v - med[j]) / dp[j]));
+// ---------------------------------------------------------------- mapa de calor
+function calor(rows, especiesOrdem) {
+  const munis = porMunicipio(rows).filter((g) => g.pacientes.length >= N_MIN_CALOR);
+  if (munis.length < 2 || !especiesOrdem.length) return null;
+  const linhas = munis.map((g) => ({
+    nome: nomeMun(g), n: g.pacientes.length, regiao: REGIAO[g.uf] || 9,
+    valores: especiesOrdem.map((e) => 100 * g.pacientes.filter((r) => (r.especies_fecais || []).includes(e)).length / g.pacientes.length),
+  })).sort((a, b) => a.regiao - b.regiao || a.nome.localeCompare(b.nome, "pt-BR"));
+  const maxCol = especiesOrdem.map((_, j) => Math.max(...linhas.map((l) => l.valores[j]), 0));
+  return { linhas, maxCol, foraCalor: porMunicipio(rows).length - munis.length };
+}
 
-  let melhor = null;
-  const kMax = Math.min(5, munis.length - 1);
-  for (let k = 2; k <= kMax; k++) {
-    const rnd = rngSemente(20261104 + k);
-    let best = null;
-    for (let t = 0; t < 25; t++) { const r = kmedias(X, k, rnd); if (!best || r.inercia < best.inercia) best = r; }
-    const s = silhueta(X, best.rot);
-    if (!melhor || s > melhor.s + 1e-9) melhor = { k, s, rot: best.rot };
-  }
-  res.k = melhor.k;
-  res.silhueta = melhor.s;
-  res.leitura = melhor.s >= 0.5 ? "forte" : melhor.s >= 0.25 ? "moderada" : "fraca";
-  const grupos = [];
-  for (let j = 0; j < melhor.k; j++) {
-    const idx = melhor.rot.map((r, i) => (r === j ? i : -1)).filter((i) => i >= 0);
-    const nPac = idx.reduce((t, i) => t + munis[i].pacientes.length, 0);
-    // prevalência bruta do grupo e razão em relação à geral
-    const perfil = especies.map((e, c) => {
-      const pos = idx.reduce((t, i) => t + munis[i].pacientes.filter((r) => r.especies.includes(e)).length, 0);
-      const pg = pos / nPac;
-      return { especie: e, categoria: catDe(e), prev: 100 * pg, razao: geral[c] ? pg / geral[c] : 0, pos };
-    });
-    const destaques = perfil.filter((x) => x.pos >= 3 && x.razao >= 1.25).sort((a, b) => b.razao - a.razao).slice(0, 4);
-    const patPos = idx.reduce((t, i) => t + munis[i].pacientes.filter(temPat).length, 0);
-    grupos.push({
-      municipios: idx.map((i) => munis[i]).sort((a, b) => b.pacientes.length - a.pacientes.length).map((g) => `${g.municipio}${g.uf ? `/${g.uf}` : ""}`),
-      nPac, prevPat: (100 * patPos) / nPac, destaques,
-    });
-  }
-  res.grupos = grupos.sort((a, b) => b.prevPat - a.prevPat).map((g, i) => ({ ...g, nome: `Grupo ${String.fromCharCode(65 + i)}` }));
-  return res;
+/** metrics (computeMetrics) -> { fezes, lamina, calor } */
+export function analisarPadroes(m) {
+  const fezes = funil(m.fecal_conclusivo || [], "positivo_fecal_patogenico", "n_coletas_pote_entregue");
+  const lamina = funil(m.lamina_conclusivo || [], "positivo_lamina_patogenico", "n_coletas_lamina_entregue");
+  const especies = (m.especies_resumo || []).map((r) => ({ especie: r.especie, categoria: r.categoria }));
+  const c = calor(m.fecal_conclusivo || [], especies.map((e) => e.especie));
+  return { fezes, lamina, calor: c && { ...c, especies } };
 }

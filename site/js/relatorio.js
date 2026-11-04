@@ -2,10 +2,10 @@
 
 import { esc } from "./util.js";
 import { tabela, comIC, textoIC } from "./tabelas.js";
-import { COR, graficoEspecies, graficoTodos, colunas, rosca, linha } from "./graficos.js";
+import { COR, COR_CATEGORIA, graficoEspecies, graficoTodos, colunas, barrasH, linha, funil } from "./graficos.js";
 import { icones } from "./ilustracoes.js";
-import { CATEGORIAS_AMOSTRAGEM, categoriaDe } from "./engine.js";
-import { analisarPadroes, N_MIN_MUNICIPIO } from "./padroes.js";
+import { CATEGORIAS_AMOSTRAGEM } from "./engine.js";
+import { analisarPadroes, limiteFunil, N_MIN_FUNIL, N_MIN_CALOR } from "./padroes.js";
 
 // ---------------------------------------------------------------- pequenos blocos
 /** Series.round(1) do pandas (numpy: arredonda x·10 com empate para o par). */
@@ -35,11 +35,36 @@ export function metrica(rotulo, valor, legenda = "", dica = "") {
     `<div class="val">${esc(valor)}</div>${legenda ? `<div class="leg">${esc(legenda)}</div>` : ""}</div>`;
 }
 
+/** Legenda de seção: textos longos mostram só a 1ª frase; o resto fica em "Mais detalhes". */
+function legendaSecao(txt) {
+  if (!txt) return "";
+  const corte = txt.length > 170 ? txt.search(/[.:—]\s(?=[A-ZÁÉÍÓÚÂÊÔÃÕÇ(“"'])/u) : -1;
+  if (corte < 40 || corte > txt.length - 30) return `<div class="pj-legenda">${esc(txt)}</div>`;
+  const ini = txt.slice(0, corte + 1), resto = txt.slice(corte + 1).trim();
+  return `<div class="pj-legenda">${esc(ini)} <details class="pj-mais"><summary>Mais detalhes</summary>${esc(resto)}</details></div>`;
+}
 export function secaoTitulo(t, legenda = "") {
-  return `<div class="pj-secao-titulo">${esc(t)}</div>` + (legenda ? `<div class="pj-legenda">${esc(legenda)}</div>` : "");
+  return `<div class="pj-secao-titulo">${esc(t)}</div>` + legendaSecao(legenda);
 }
 export function subTitulo(t, legenda = "") {
-  return `<div class="pj-secao-sub">${esc(t)}</div>` + (legenda ? `<div class="pj-legenda">${esc(legenda)}</div>` : "");
+  return `<div class="pj-secao-sub">${esc(t)}</div>` + legendaSecao(legenda);
+}
+/** Notas curtas sobre a base (neutras, uma por linha). */
+const notas = (itens) => (itens.length ? `<ul class="pj-notas">${itens.map((t) => `<li>${t}</li>`).join("")}</ul>` : "");
+
+/** Cartão de um tipo de amostra: todos os parasitos e só patogênicos lado a lado. */
+function cartaoDominio(titulo, dica, n, temMetodo, nomeDominio, prev, ic, prevPat, icPat) {
+  if (!temMetodo || !n) {
+    return metrica(titulo, "—", prevLegenda(null, null, n, temMetodo, nomeDominio), dica);
+  }
+  const ic1 = (a, b) => (a === null || a === undefined ? "" : `IC95% ${a.toFixed(1)}–${b.toFixed(1)}`);
+  const iguais = prev === prevPat;
+  const par = iguais
+    ? `<div><div class="val">${prev.toFixed(1)}%</div><div class="leg">todos os achados são patogênicos · ${ic1(...ic)}</div></div>`
+    : `<div><div class="val">${prev.toFixed(1)}%</div><div class="leg">todos os parasitos<br>${ic1(...ic)}</div></div>` +
+      `<div><div class="val pat">${prevPat.toFixed(1)}%</div><div class="leg">só patogênicos<br>${ic1(...icPat)}</div></div>`;
+  return `<div class="pj-metrica pj-resumo"><div class="rot"><span>${esc(titulo)}</span>${ajuda(dica)}</div>` +
+    `<div class="pj-par">${par}</div><div class="leg base">${n} pacientes com resultado conclusivo</div></div>`;
 }
 export const info = (t) => `<div class="pj-alerta info">${t}</div>`;
 // Gráficos são desenhados na largura real do contêiner (texto sempre nítido e
@@ -80,18 +105,34 @@ function graficoEspeciesTela(esp, soPat, vazio) {
   return grafico((w) => graficoEspecies(d, { largura: w }));
 }
 
+let _alt = 0;
 function blocoDominio(titulo, legenda, esp, nBase, nPos, prev, ic, nPat, prevPat, icPat, temMetodo) {
   let h = secaoTitulo(titulo, legenda);
   if (!temMetodo) return h + info("Nenhum método deste tipo de amostra foi incluído na análise (veja o passo 03).");
   if (!nBase) return h + info("Nenhum paciente com resultado conclusivo neste tipo de amostra.");
-  h += `<div class="pj-cols c2">` +
-    metrica("Positividade — todos os parasitos", prevValor(prev, nBase), `${nPos} de ${nBase} pacientes · ${formatIC(...ic)}`) +
-    metrica("Positividade — somente patogênicos", prevValor(prevPat, nBase), `${nPat} de ${nBase} pacientes · ${formatIC(...icPat)}`) +
-    `</div><div class="pj-cols c2" style="margin-top:14px">` +
-    `<div>${subTitulo("Todos os parasitos")}${graficoEspeciesTela(esp, false, "Nenhum parasito detectado.")}</div>` +
-    `<div>${subTitulo("Somente patogênicos")}${graficoEspeciesTela(esp, true, "Nenhum parasito patogênico detectado.")}</div></div>`;
+  const iguais = nPos === nPat;
+  h += `<p class="pj-resumo-linha"><b>${nPos} de ${nBase}</b> pacientes com algum parasito (${prevValor(prev, nBase)}, ${formatIC(...ic)})` +
+    (iguais ? " — todos patogênicos." : ` · <b>${nPat}</b> com patogênico (${prevValor(prevPat, nBase)}, ${formatIC(...icPat)}).`) + `</p>`;
+  if (iguais || !esp.some((r) => r.categoria === "Patogênico")) {
+    h += graficoEspeciesTela(esp, false, "Nenhum parasito detectado.");
+  } else {
+    const g = `alt${++_alt}`;
+    h += `<div class="pj-abas simples" role="tablist" data-grupo="${g}">` +
+      `<button class="pj-aba" role="tab" aria-selected="true" data-aba="${g}-todos">Todos os parasitos</button>` +
+      `<button class="pj-aba" role="tab" aria-selected="false" data-aba="${g}-pat">Só patogênicos</button></div>` +
+      `<div data-painel="${g}-todos" data-grupo="${g}">${graficoEspeciesTela(esp, false, "Nenhum parasito detectado.")}</div>` +
+      `<div data-painel="${g}-pat" data-grupo="${g}" hidden>${graficoEspeciesTela(esp, true, "Nenhum parasito patogênico detectado.")}</div>`;
+  }
   h += expansivel("Tabela por espécie com IC95% (Wilson)", tabela(COLS_ESPECIE, comIC(esp)));
   return h;
+}
+
+/** Barra única dividida em partes (≤ 4), com rótulos abaixo — substitui a rosca. */
+function barraPartes(partes) {
+  const tot = partes.reduce((t, p) => t + p.valor, 0) || 1;
+  return `<div class="pj-partes" role="img" aria-label="${esc(partes.map((p) => `${p.rotulo}: ${p.valor}`).join(", "))}">` +
+    partes.filter((p) => p.valor).map((p) => `<span style="flex:${p.valor};background:${p.cor}" data-dica="${esc(`${p.rotulo}: ${p.valor} (${(100 * p.valor / tot).toFixed(1)}%)`)}"></span>`).join("") +
+    `</div><div class="pj-partes-leg">` + partes.map((p) => `<div><i style="background:${p.cor}"></i><span class="v">${(100 * p.valor / tot).toFixed(1)}%</span> ${esc(p.rotulo)} <span class="n">(${p.valor})</span></div>`).join("") + `</div>`;
 }
 
 // ---------------------------------------------------------------- abas
@@ -100,45 +141,31 @@ function abaGeral(m) {
   const temF = dom.has("fecal"), temL = dom.has("lamina");
   const nF = m.fecal_conclusivo.length, nL = m.lamina_conclusivo.length, nC = m.combinada_base.length;
   let h = `<div class="pj-secao">${secaoTitulo("Resumo executivo")}<div class="pj-cols c3">` +
-    metrica("Prevalência — amostra fecal", prevValor(m.prev_fecal, nF),
-      prevLegenda(m.prev_fecal_ic95_inf, m.prev_fecal_ic95_sup, nF, temF, "amostra fecal"),
-      "Base: pacientes com resultado CONCLUSIVO em pelo menos um método fecal presente nesta planilha. Achados exclusivos de métodos de lâmina não entram aqui — veja 'Espécies & parasitos' para a prevalência de Enterobius. Pacientes com todos os resultados fecais marcados como 'Amostra insuficiente' são excluídos do denominador (não contam como negativos). IC95% calculado pelo método de Wilson.") +
-    metrica("Prevalência — lâmina (todos os pacientes)", prevValor(m.prev_lamina, nL),
-      prevLegenda(m.prev_lamina_ic95_inf, m.prev_lamina_ic95_sup, nL, temL, "lâmina"),
-      "Base: TODOS os pacientes com resultado conclusivo do(s) método(s) de lâmina desta planilha (Graham) — tenham eles entregado só a lâmina ou fezes e lâmina. Reflete tipicamente Enterobius vermicularis — o único parasita pesquisável só com a lâmina. O subgrupo que entregou exclusivamente lâmina é reportado à parte logo abaixo, mas seus resultados já estão somados aqui. IC95% calculado pelo método de Wilson.") +
-    metrica("Prevalência combinada", prevValor(m.prev_combinada, nC),
-      prevLegenda(m.prev_combinada_ic95_inf, m.prev_combinada_ic95_sup, nC, true, "nenhum domínio"),
-      "Todos os pacientes com pelo menos um resultado conclusivo, em qualquer domínio (fezes e/ou lâmina) — use com cautela, mistura profundidades diagnósticas diferentes. IC95% calculado pelo método de Wilson.") +
-    `</div><div class="pj-cols c3" style="margin-top:14px">` +
-    metrica("Fezes — somente patogênicos", prevValor(m.prev_fecal_patogenico, nF),
-      prevLegenda(m.prev_fecal_patogenico_ic95_inf, m.prev_fecal_patogenico_ic95_sup, nF, temF, "amostra fecal"),
-      "Mesma base da prevalência fecal; conta só pacientes com ao menos um parasito classificado como patogênico no passo 03.") +
-    metrica("Lâmina — somente patogênicos", prevValor(m.prev_lamina_patogenico, nL),
-      prevLegenda(m.prev_lamina_patogenico_ic95_inf, m.prev_lamina_patogenico_ic95_sup, nL, temL, "lâmina"),
-      "Mesma base da prevalência de lâmina; conta só pacientes com ao menos um parasito classificado como patogênico no passo 03.") +
-    `<div></div></div>`;
+    cartaoDominio("Fezes", "Base: pacientes com resultado CONCLUSIVO em pelo menos um método fecal presente nesta planilha. Achados exclusivos de métodos de lâmina não entram aqui. Pacientes com todos os resultados fecais marcados como 'Amostra insuficiente' são excluídos do denominador (não contam como negativos). 'Só patogênicos' conta pacientes com ao menos um parasito classificado como patogênico no passo 03. IC95% pelo método de Wilson.",
+      nF, temF, "amostra fecal", m.prev_fecal, [m.prev_fecal_ic95_inf, m.prev_fecal_ic95_sup], m.prev_fecal_patogenico, [m.prev_fecal_patogenico_ic95_inf, m.prev_fecal_patogenico_ic95_sup]) +
+    cartaoDominio("Lâmina (todos os pacientes)", "Base: TODOS os pacientes com resultado conclusivo do(s) método(s) de lâmina desta planilha (Graham) — tenham entregado só a lâmina ou fezes e lâmina. Reflete tipicamente Enterobius vermicularis. IC95% pelo método de Wilson.",
+      nL, temL, "lâmina", m.prev_lamina, [m.prev_lamina_ic95_inf, m.prev_lamina_ic95_sup], m.prev_lamina_patogenico, [m.prev_lamina_patogenico_ic95_inf, m.prev_lamina_patogenico_ic95_sup]) +
+    metrica("Combinada (fezes ou lâmina)", prevValor(m.prev_combinada, nC),
+      `${prevLegenda(m.prev_combinada_ic95_inf, m.prev_combinada_ic95_sup, nC, true, "nenhum domínio")} · mistura tipos de amostra, use com cautela`,
+      "Todos os pacientes com pelo menos um resultado conclusivo, em qualquer domínio (fezes e/ou lâmina) — mistura profundidades diagnósticas diferentes. IC95% calculado pelo método de Wilson.") +
+    `</div>`;
 
+  const itens = [];
   const nInc = m.fecal_inconclusivo.length + m.lamina_inconclusivo.length;
   if (nInc > 0) {
-    const nl = m.lamina_inconclusivo.length;
-    h += `<div class="pj-note"><strong>Amostras inconclusivas:</strong> ${m.fecal_inconclusivo.length} paciente(s) entregaram pote de fezes mas ` +
-      `tiveram <em>todos</em> os métodos fecais marcados como "Amostra insuficiente" (ou sem resultado registrado)` +
-      `${nl ? `, ${nl} paciente(s) com lâmina entregue na mesma situação` : ""}. Esses pacientes foram excluídos dos denominadores de prevalência acima — eles ` +
-      `<u>não</u> contam como negativos, pois não houve diagnóstico conclusivo. Células marcadas como "Não realizado" não entram nesta contagem — elas são ` +
-      `excluídas do denominador do método sem contar como inconclusivas.</div>`;
+    itens.push(`<b>${m.fecal_inconclusivo.length} paciente(s) com fezes e ${m.lamina_inconclusivo.length} com lâmina sem resultado conclusivo</b> ficaram fora dos denominadores — não contam como negativos.` +
+      ajuda("Pacientes que entregaram a amostra, mas tiveram todos os métodos daquele tipo marcados como 'Amostra insuficiente' (ou sem resultado). Células 'Não realizado' não entram nesta contagem: são excluídas do denominador do método sem contar como inconclusivas."));
   }
   if (m.apenas_lamina.length > 0) {
     const pos = m.lamina_only_conclusivo.filter((r) => r.positivo_lamina).length;
-    h += `<div class="pj-note"><strong>Atenção:</strong> ${m.apenas_lamina.length} paciente(s) só entregaram a lâmina, nunca o pote de fezes — para eles, apenas ` +
-      `o(s) método(s) de lâmina desta planilha pôde(puderam) ser pesquisado(s). Esses resultados já estão somados na "Prevalência — lâmina (todos os pacientes)" ` +
-      `acima; isoladamente, a prevalência só neste subgrupo é de ${m.prev_lamina_only.toFixed(1)}% (${pos} de ${m.lamina_only_conclusivo.length} pacientes conclusivos).</div>`;
+    itens.push(`<b>${m.apenas_lamina.length} paciente(s) só entregaram a lâmina</b> (já somados na lâmina); neste subgrupo, ${m.prev_lamina_only.toFixed(1)}% positivos (${pos} de ${m.lamina_only_conclusivo.length}).`);
   }
-  h += `</div>`;
+  h += notas(itens) + `</div>`;
 
-  // profundidade de amostragem
+  // profundidade de amostragem: uma faixa com as quatro categorias
   const cat = CATEGORIAS_AMOSTRAGEM.map((c) => ({ c, n: m.cat_counts[c], p: npRound1(100 * m.cat_counts[c] / m.total) }));
-  h += `<div class="pj-secao">${secaoTitulo("Pacientes por profundidade de amostragem")}` +
-    tabela([{ k: "c", t: "Categoria de amostragem" }, { k: "n", t: "Pacientes", tipo: "int" }, { k: "p", t: "%", tipo: "pct" }], cat, { ordenavel: false }) + `</div>`;
+  h += `<div class="pj-secao">${subTitulo("Material entregue por paciente")}<div class="pj-faixa">` +
+    cat.map((x) => `<div><span class="v">${x.n}</span><span class="p">${x.p.toFixed(1)}%</span><span class="r">${esc(x.c)}</span></div>`).join("") + `</div></div>`;
 
   // território
   if (m.tem_territorio) {
@@ -176,29 +203,33 @@ function abaEspecies(m) {
   const lam = m.metodos_ativos.filter((x) => x[3] === "lamina").map((x) => x[1]);
   const fc = m.fecal_conclusivo, lc = m.lamina_conclusivo;
   let h = `<div class="pj-secao">` + blocoDominio(
-    "Amostras de fezes — todos os parasitos x somente patogênicos",
+    "Amostras de fezes",
     `Métodos de fezes: ${fec.join(", ") || "—"}. Base: pacientes com resultado conclusivo nas fezes; um paciente conta uma vez por espécie, mesmo que ela tenha aparecido em mais de uma coleta ou método. Achados da lâmina não entram aqui.`,
     m.especies_resumo, fc.length, fc.filter((r) => r.positivo_fecal).length, m.prev_fecal, [m.prev_fecal_ic95_inf, m.prev_fecal_ic95_sup],
     m.n_fecal_patogenico, m.prev_fecal_patogenico, [m.prev_fecal_patogenico_ic95_inf, m.prev_fecal_patogenico_ic95_sup], fec.length > 0) + `</div>`;
   h += `<div class="pj-secao">` + blocoDominio(
-    `Lâmina (${lam.join(" / ") || "Graham"}) — todos os parasitos x somente patogênicos`,
+    `Lâmina (${lam.join(" / ") || "Graham"})`,
     "Base: pacientes com resultado conclusivo na lâmina (fita/swab perianal). Analisada separadamente das fezes, porque a lâmina pesquisa um conjunto diferente de parasitos (tipicamente Enterobius vermicularis).",
     m.especies_lamina_resumo, lc.length, lc.filter((r) => r.positivo_lamina).length, m.prev_lamina, [m.prev_lamina_ic95_inf, m.prev_lamina_ic95_sup],
     m.n_lamina_patogenico, m.prev_lamina_patogenico, [m.prev_lamina_patogenico_ic95_inf, m.prev_lamina_patogenico_ic95_sup], lam.length > 0) + `</div>`;
 
   // mono x poli
-  h += `<div class="pj-secao">${secaoTitulo("Mono x poliparasitismo", "Base: espécies de origem fecal.")}<div class="pj-cols c23"><div>` +
-    grafico((w) => rosca([{ rotulo: "Negativo", valor: m.neg, cor: COR.SALVIA }, { rotulo: "Monoparasitismo", valor: m.mono, cor: COR.FOLHA },
-      { rotulo: "Poliparasitismo", valor: m.poli, cor: COR.COBRE }], { largura: Math.min(w, 460), altura: 240 })) +
-    `</div><div>${subTitulo("Combinações mais frequentes")}` +
+  h += `<div class="pj-secao">${secaoTitulo("Mono x poliparasitismo", "Base: espécies de origem fecal.")}` +
+    barraPartes([{ rotulo: "Negativo", valor: m.neg, cor: COR.SALVIA }, { rotulo: "Monoparasitismo", valor: m.mono, cor: COR.FOLHA },
+      { rotulo: "Poliparasitismo", valor: m.poli, cor: COR.MATA }]) +
+    `<div style="margin-top:16px">${subTitulo("Combinações mais frequentes")}` +
     (m.combos_resumo.length ? tabela([{ k: "combinacao", t: "Combinação", quebra: true }, { k: "n", t: "Pacientes", tipo: "int" }], m.combos_resumo, { altura: 300 })
-      : info("Nenhuma coinfecção registrada.")) + `</div></div></div>`;
+      : info("Nenhuma coinfecção registrada.")) + `</div></div>`;
 
   // método x espécie
   h += `<div class="pj-secao">` + subTitulo("Prevalência por método diagnóstico e espécie",
     "Cada célula mostra a prevalência (%) daquela espécie especificamente pelo método indicado, com denominador = pacientes com resultado conclusivo NAQUELE método. Uma mesma espécie pode aparecer em mais de um método fecal (ex.: um ovo de helminto pode ser visto tanto no HPJ quanto no Willis). Colunas mostram só os métodos presentes nesta planilha.");
   if (m.metodo_especie_resumo.length && m.metodos_ativos_nomes.length) {
-    h += tabela([{ k: "especie", t: "Espécie" }, ...m.metodos_ativos_nomes.map((nm, i) => ({ k: `m${i}`, t: nm, tipo: "pct" }))], pivotMetodoEspecie(m));
+    const piv = pivotMetodoEspecie(m);
+    const vmax = Math.max(1, ...piv.flatMap((r) => m.metodos_ativos_nomes.map((_, i) => r[`m${i}`] ?? 0)));
+    const celula = (v) => (v === null || v === undefined ? `<span class="pj-vazio">·</span>`
+      : `<span class="pj-celula" style="--a:${(0.06 + 0.7 * v / vmax).toFixed(2)}"${v / vmax > 0.6 ? " data-escuro" : ""}>${v.toFixed(1)}</span>`);
+    h += tabela([{ k: "especie", t: "Espécie" }, ...m.metodos_ativos_nomes.map((nm, i) => ({ k: `m${i}`, t: nm, tipo: "pct", fmt: celula }))], piv);
     h += expansivel("Ver com intervalos de confiança (IC95%, Wilson)", tabela([
       { k: "metodo", t: "Método" }, { k: "especie", t: "Espécie" }, { k: "n", t: "N", tipo: "int" },
       { k: "prevalencia", t: "Prevalência %", tipo: "pct" }, { k: "categoria", t: "Categoria", tipo: "cat" }, { k: "ic", t: "IC 95%" }],
@@ -236,24 +267,23 @@ export function pivotMetodoEspecie(m) {
 function abaMetodos(m) {
   let h = `<div class="pj-secao">` + secaoTitulo("Comparação entre métodos diagnósticos",
     "Denominador = pacientes com resultado conclusivo naquele método específico (exclui quem teve só 'Amostra insuficiente' ou 'Não realizado' nesse método). Lista só os métodos presentes nesta planilha.");
-  h += `<div class="pj-cols c32"><div>`;
   if (m.metodos_resumo.length) {
-    const paineis = [];
-    for (const [titulo, cor] of [["Pote de fezes", COR.FOLHA], ["Lâmina", COR.COBRE]]) {
-      const b = m.metodos_resumo.filter((r) => r.amostra_biologica === titulo);
-      if (b.length) {
-        paineis.push({ titulo, cor, barras: b.map((r) => ({ rotulo: r.metodo, valor: r.prevalencia, texto: `${r.prevalencia.toFixed(1)}%`,
-          dica: `${r.metodo} (${titulo})\nPrevalência: ${r.prevalencia.toFixed(1)}%\n${r.n_pacientes_positivas} de ${r.n_pacientes_testaveis} testáveis\nIC 95%: ${textoIC(r, "–")}` })) });
-      }
+    const xmax = Math.max(10, Math.min(110, Math.max(...m.metodos_resumo.map((r) => r.prevalencia)) * 1.25));
+    h += `<div class="pj-cols c2">`;
+    for (const titulo of ["Pote de fezes", "Lâmina"]) {
+      const b = [...m.metodos_resumo.filter((r) => r.amostra_biologica === titulo)].sort((x, y) => y.prevalencia - x.prevalencia);
+      if (!b.length) continue;
+      h += `<div>${subTitulo(titulo)}` + grafico((w) => barrasH(b.map((r) => ({
+        rotulo: r.metodo, valor: r.prevalencia, cor: COR.MATA, texto: `${r.prevalencia.toFixed(1)}%`,
+        dica: `${r.metodo} (${titulo})\nPrevalência: ${r.prevalencia.toFixed(1)}%\n${r.n_pacientes_positivas} de ${r.n_pacientes_testaveis} testáveis\nIC 95%: ${textoIC(r, "–")}` })),
+      { largura: w, xmax, tituloX: "Prevalência (%)" })) + `</div>`;
     }
-    h += grafico((w) => colunas(paineis, { largura: w, altura: 320, tituloY: "Prevalência (%)",
-      ymax: Math.max(10, Math.min(110, Math.max(...m.metodos_resumo.map((r) => r.prevalencia)) * 1.2)) }));
+    h += `</div>`;
   } else h += info("Nenhum método detectado nesta planilha.");
-  h += `</div><div>` + tabela([
+  h += expansivel("Tabela por método com IC95% (Wilson)", tabela([
     { k: "metodo", t: "Método" }, { k: "amostra_biologica", t: "Amostra" }, { k: "n_pacientes_testaveis", t: "Testáveis", tipo: "int" },
     { k: "n_pacientes_positivas", t: "Positivas", tipo: "int" }, { k: "n_pacientes_inconclusivas", t: "Inconclusivas", tipo: "int" },
-    { k: "prevalencia", t: "Prevalência %", tipo: "pct" }, { k: "ic", t: "IC 95%" }], comIC(m.metodos_resumo)) +
-    `<div class="pj-legenda">IC95% pelo método de Wilson.</div></div></div></div>`;
+    { k: "prevalencia", t: "Prevalência %", tipo: "pct" }, { k: "ic", t: "IC 95%" }], comIC(m.metodos_resumo))) + `</div>`;
 
   // McNemar
   h += `<div class="pj-secao">` + subTitulo("HPJ x Willis — teste de McNemar",
@@ -267,7 +297,7 @@ function abaMetodos(m) {
       sem_discordancia: "sem discordâncias — nada a testar" }[mc.metodo] || mc.metodo;
     h += `<div class="pj-cols c23"><div>` + tabela([{ k: "r", t: "" }, { k: "a", t: "Willis +", tipo: "int" }, { k: "b", t: "Willis −", tipo: "int" }],
       [{ r: "HPJ +", a: tb.pp, b: tb.pn }, { r: "HPJ −", a: tb.np, b: tb.nn }], { ordenavel: false }) + `</div><div>` +
-      metrica("p-valor (McNemar)", mc.p_valor !== null ? mc.p_valor.toFixed(4) : "—",
+      metrica("p-valor (McNemar)", mc.p_valor === null ? "—" : mc.p_valor < 0.001 ? "< 0.001" : mc.p_valor.toFixed(3),
         `n pareado = ${mc.n_pareado} · ${tb.pn + tb.np} discordância(s) (${tb.pn} HPJ+/Willis−, ${tb.np} HPJ−/Willis+) · ${rot}.`) +
       (mc.p_valor !== null ? `<div class="pj-legenda">${mc.p_valor < 0.05 ? "p < 0,05 — diferença estatisticamente significativa entre os métodos nesta amostra." : "p ≥ 0,05 — sem evidência estatística de diferença entre os métodos nesta amostra."}</div>` : "") +
       `</div></div>`;
@@ -278,14 +308,14 @@ function abaMetodos(m) {
   h += `<div class="pj-secao">` + secaoTitulo("Efeito do número de potes de fezes entregues",
     "Usa somente positividade fecal (qualquer método fecal presente na planilha). Compara SUBGRUPOS diferentes de pacientes (quem entregou 1, 2 ou 3 potes), o que pode ter viés de seleção — veja a curva cumulativa abaixo, calculada no mesmo grupo de pacientes, para uma estimativa sem esse viés.");
   if (m.efeito_n_coletas.length) {
-    h += grafico((w) => colunas([{ cor: COR.MATA, barras: m.efeito_n_coletas.map((r) => ({ rotulo: String(r.n_potes_entregues), valor: r.prevalencia,
-      texto: `n=${r.n_pacientes}`, dica: `${r.n_potes_entregues} pote(s) entregue(s)\nPrevalência: ${r.prevalencia.toFixed(1)}%\n${r.n_positivos} de ${r.n_pacientes} pacientes` })) }],
-    { largura: Math.min(w, 760), altura: 300, tituloY: "Prevalência (%)", tituloX: "Nº de potes entregues",
+    h += grafico((w) => colunas([{ cor: COR.MATA, barras: m.efeito_n_coletas.map((r) => ({ rotulo: `${r.n_potes_entregues} pote(s)\nn = ${r.n_pacientes}`, valor: r.prevalencia,
+      texto: `${r.prevalencia.toFixed(1)}%`, dica: `${r.n_potes_entregues} pote(s) entregue(s)\nPrevalência: ${r.prevalencia.toFixed(1)}%\n${r.n_positivos} de ${r.n_pacientes} pacientes` })) }],
+    { largura: Math.min(w, 460), altura: 280, tituloY: "Prevalência (%)",
       ymax: Math.max(10, Math.min(110, Math.max(...m.efeito_n_coletas.map((r) => r.prevalencia)) * 1.2)) }));
   } else h += info("Dados insuficientes para este gráfico.");
   const ca = m.cochran_armitage_efeito_coletas;
   if (ca.p_valor !== null) {
-    h += `<div class="pj-legenda">Teste de tendência de Cochran-Armitage: Z = ${ca.estatistica_z.toFixed(3)}, p = ${ca.p_valor.toFixed(4)} (${ca.n_grupos} grupos). ${esc(ca.aviso)}</div>`;
+    h += `<div class="pj-legenda">Teste de tendência de Cochran-Armitage: Z = ${ca.estatistica_z.toFixed(3)}, p = ${ca.p_valor < 0.001 ? "< 0.001" : ca.p_valor.toFixed(3)} (${ca.n_grupos} grupos).${ajuda(ca.aviso)}</div>`;
   } else if (ca.n_grupos && ca.n_grupos >= 2) {
     h += `<div class="pj-legenda">Teste de tendência de Cochran-Armitage não calculável nesta base. ${esc(ca.aviso)}</div>`;
   }
@@ -299,7 +329,7 @@ function abaMetodos(m) {
     h += `<div class="pj-legenda">Mesmo grupo de ${cum[0].n_pacientes} paciente(s) que entregou o número máximo de potes observado no estudo (${kMax}), medindo quantas ficariam positivas se o laboratório parasse na 1ª, 2ª ... até a última coleta. Como é a mesma paciente sendo acompanhado (medida repetida), este gráfico não sofre o viés de comparar subgrupos diferentes de crianças.</div>`;
     h += grafico((w) => linha(cum.map((r) => ({ x: r.k, y: r.prevalencia_cumulativa, texto: `${r.prevalencia_cumulativa.toFixed(1)}%`,
       dica: `Até a ${r.k}ª coleta\nPrevalência cumulativa: ${r.prevalencia_cumulativa.toFixed(1)}%\nn = ${r.n_pacientes}` })),
-    { largura: Math.min(w, 760), altura: 300, tituloX: "Nº de potes considerados (cumulativo)", tituloY: "Prevalência cumulativa (%)",
+    { largura: Math.min(w, 600), altura: 260, tituloX: "Nº de potes considerados (cumulativo)", tituloY: "Prevalência cumulativa (%)",
       ymax: Math.max(10, Math.min(110, Math.max(...cum.map((r) => r.prevalencia_cumulativa)) * 1.2)) }));
   } else h += info("Dados insuficientes para a curva cumulativa (nenhum paciente com coletas identificadas por P1/P2/P3).");
   return h + `</div>`;
@@ -316,53 +346,67 @@ function abaBase(m) {
 }
 
 // ---------------------------------------------------------------- padrões (exploratório)
-const fmtP = (v) => (v < 0.001 ? "&lt;0.001" : v.toFixed(3));
+const abrevEspecie = (e) => {
+  const p = e.split(" ");
+  return p.length === 2 && !/^sp\.?$/.test(p[1]) ? `${p[0][0]}. ${p[1]}` : e;
+};
+
+function blocoFunil(f, titulo, rotuloEsforco, nomeAmostra) {
+  let h = subTitulo(titulo);
+  if (!f.suficiente) {
+    return h + info(`São necessários pelo menos 3 municípios com ${N_MIN_FUNIL} ou mais pacientes conclusivos em ${nomeAmostra} (há ${f.nOk}).`);
+  }
+  const pts = f.pontos.map((p) => ({ ...p, dica: `${p.nome}\n${p.k} de ${p.n} pacientes (${p.prev.toFixed(1)}%)\n${rotuloEsforco}: ${p.esforco.toFixed(1)} por paciente\n${p.situacao}` }));
+  h += grafico((w) => funil(pts, f.p0, (n, q) => limiteFunil(n, f.p0 / 100, q),
+    { largura: Math.min(w, 820), altura: 340, tituloX: "Nº de pacientes com resultado conclusivo", tituloY: "Com parasito patogênico (%)" }));
+  const fora998 = f.pontos.filter((p) => p.f998);
+  const fora95 = f.pontos.filter((p) => p.f95 && !p.f998);
+  const esperados = Math.round(f.pontos.length * 0.05);
+  const frases = [];
+  frases.push(fora998.length
+    ? `<b>${fora998.length} município(s) fora da faixa de 99,8%</b> (diferença difícil de explicar pelo acaso): ${fora998.map((p) => `${esc(p.nome)} (${p.prev.toFixed(1)}%, ${p.f998})`).join("; ")}.`
+    : "Nenhum município fora da faixa de 99,8%.");
+  if (fora95.length) {
+    frases.push(`${fora95.length} fora só da faixa de 95% — com ${f.pontos.length} municípios, cerca de ${esperados} ficariam fora dela por acaso.`);
+  }
+  const variaEsforco = f.esforcoMax - f.esforcoMin >= 0.5;
+  if (variaEsforco) {
+    frases.push(`Atenção: a média de ${rotuloEsforco.toLowerCase()} por paciente varia de ${f.esforcoMin.toFixed(1)} a ${f.esforcoMax.toFixed(1)} entre os municípios. Mais coletas aumentam a chance de encontrar parasitos — confira essa coluna antes de comparar.`);
+  }
+  h += `<div class="pj-nota">${frases.map((t) => `<p>${t}</p>`).join("")}</div>`;
+  h += expansivel(`Tabela dos ${f.pontos.length} municípios`, tabela([
+    { k: "municipio", t: "Município" }, { k: "uf", t: "UF" }, { k: "n", t: "Pacientes", tipo: "int" },
+    { k: "k", t: "Com patogênico", tipo: "int" }, { k: "prev", t: "%", tipo: "pct" },
+    { k: "esforco", t: `${rotuloEsforco} / paciente`, tipo: "num", fmt: (v) => v.toFixed(1) }, { k: "situacao", t: "Situação" }],
+  f.pontos, { altura: 420 }));
+  if (f.foraFunil) h += `<div class="pj-legenda">${f.foraFunil} município(s) com menos de ${N_MIN_FUNIL} pacientes ficaram fora.</div>`;
+  return h;
+}
+
+function blocoCalor(c) {
+  let h = subTitulo("Espécies por município (fezes)");
+  if (!c) return h + info(`O mapa de calor precisa de pelo menos 2 municípios com ${N_MIN_CALOR} ou mais pacientes conclusivos nas fezes.`);
+  const cab = c.especies.map((e) => `<th class="num" title="${esc(e.especie)} · ${esc(e.categoria)}"><span class="pj-cat-ponto" style="background:${COR_CATEGORIA[e.categoria] || COR.SALVIA}"></span><i>${esc(abrevEspecie(e.especie))}</i></th>`).join("");
+  const REG = ["", "Norte", "Nordeste", "Centro-Oeste", "Sudeste", "Sul"];
+  let regAnt = null;
+  const corpo = c.linhas.map((l) => (l.regiao !== regAnt && (regAnt = l.regiao) ? `<tr class="reg"><th colspan="${c.especies.length + 1}">${REG[l.regiao] || "Sem UF"}</th></tr>` : "") + `<tr><th scope="row">${esc(l.nome)} <span class="n">${l.n}</span></th>` + l.valores.map((v, j) => {
+    const a = c.maxCol[j] ? v / c.maxCol[j] : 0;
+    return v ? `<td class="num" style="--a:${(0.04 + 0.62 * a ** 1.6).toFixed(2)}"${a > 0.75 ? ' data-escuro=""' : ""}>${v.toFixed(1)}</td>` : `<td class="num zero">·</td>`;
+  }).join("") + `</tr>`).join("");
+  h += `<div class="pj-legenda">Prevalência (%) de cada espécie em cada município, agrupados por região. A cor compara os municípios <b>dentro de cada espécie</b>: a célula mais escura é onde aquela espécie foi mais frequente. Ponto colorido no cabeçalho: <span class="pj-cat-ponto" style="background:${COR.COBRE}"></span> patogênico, <span class="pj-cat-ponto" style="background:${COR.FOLHA}"></span> comensal, <span class="pj-cat-ponto" style="background:${COR.SALVIA}"></span> não classificado.</div>`;
+  h += `<div class="pj-tabela-wrap pj-calor-wrap"><table class="pj-calor"><thead><tr><th>Município <span class="n">n</span></th>${cab}</tr></thead><tbody>${corpo}</tbody></table></div>`;
+  if (c.foraCalor) h += `<div class="pj-legenda">${c.foraCalor} município(s) com menos de ${N_MIN_CALOR} pacientes ficaram fora.</div>`;
+  return h;
+}
 
 function abaPadroes(m) {
-  const r = analisarPadroes(m, (e) => categoriaDe(e, m.config));
+  const r = analisarPadroes(m);
   let h = `<div class="pj-secao">` + secaoTitulo("Padrões territoriais",
-    "Análise exploratória dos municípios de moradia, feita no seu navegador. Ela não muda nenhuma prevalência do relatório: serve para levantar hipóteses e orientar onde olhar com mais atenção.");
-  if (!r.suficiente) return h + info(esc(r.motivo)) + `</div>`;
-  if (r.fora) h += `<div class="pj-legenda">${r.fora} município(s) com menos de ${N_MIN_MUNICIPIO} pacientes ficaram fora desta aba (amostra pequena demais para comparar).</div>`;
-
-  // 1. acima / abaixo do esperado
-  h += subTitulo("Municípios acima ou abaixo do esperado",
-    `Proporção de pacientes com algum parasito patogênico em cada município, comparada com a do conjunto (${r.p0.toFixed(1)}%). ` +
-    "Teste binomial exato; o valor q corrige para o número de municípios testados (Benjamini-Hochberg). q < 0,05: diferença consistente; q < 0,10: indício, a confirmar.");
-  const destaque = r.testes.filter((t) => t.q < 0.10);
-  h += destaque.length
-    ? `<div class="pj-note"><strong>${destaque.length} município(s) com diferença:</strong> ${destaque.map((t) =>
-      `${esc(t.municipio)}${t.uf ? `/${esc(t.uf)}` : ""} (${t.prev.toFixed(1)}%, ${esc(t.situacao)})`).join("; ")}.</div>`
-    : info("Nenhum município se afastou do conjunto além do que o acaso explicaria.");
-  h += expansivel(`Tabela dos ${r.testes.length} municípios`, tabela([
-    { k: "municipio", t: "Município" }, { k: "uf", t: "UF" }, { k: "n", t: "Pacientes", tipo: "int" },
-    { k: "k", t: "Com patogênico", tipo: "int" }, { k: "prev", t: "Prevalência %", tipo: "pct" },
-    { k: "p", t: "Valor p", tipo: "num", fmt: fmtP }, { k: "q", t: "Valor q", tipo: "num", fmt: fmtP },
-    { k: "situacao", t: "Situação" }], r.testes, { altura: 420 }));
-
-  // 2. agrupamento
-  h += `<div style="margin-top:22px"></div>` + subTitulo("Municípios com perfil parasitológico parecido",
-    "Agrupamento automático (aprendizado de máquina não supervisionado, k-médias) pelas prevalências de cada espécie. " +
-    "Os grupos são uma ferramenta de exploração, não uma classificação oficial dos municípios.");
-  if (!r.grupos.length) return h + info(esc(r.motivoGrupos || "Dados insuficientes para o agrupamento.")) + `</div>`;
-  const leituras = {
-    forte: "Os grupos estão bem separados (silhueta ≥ 0,50): os perfis são de fato distintos.",
-    moderada: "Os grupos estão razoavelmente separados (silhueta entre 0,25 e 0,50): há perfis diferentes, mas com municípios de transição.",
-    fraca: "Os grupos se sobrepõem bastante (silhueta abaixo de 0,25): os dados parecem formar um gradiente contínuo, e não grupos bem definidos. Leia os grupos como faixas desse gradiente.",
-  };
-  h += `<div class="pj-note"><strong>${r.grupos.length} grupos · silhueta ${r.silhueta.toFixed(2)}.</strong> ${leituras[r.leitura]}</div>`;
-  h += `<div class="pj-cols c${Math.min(r.grupos.length, 3)}" style="margin-top:12px">` + r.grupos.map((g) => {
-    const dest = g.destaques.length
-      ? `<ul class="pj-grupo-dest">${g.destaques.map((d) => `<li><i>${esc(d.especie)}</i> · ${d.prev.toFixed(1)}% <span>(${d.razao.toFixed(1)}× a média)</span></li>`).join("")}</ul>`
-      : `<div class="pj-legenda">Nenhuma espécie bem acima da média geral.</div>`;
-    return `<div class="pj-metrica pj-grupo"><div class="rot"><span>${esc(g.nome)}</span></div>` +
-      `<div class="val">${g.prevPat.toFixed(1)}%</div><div class="leg">com parasito patogênico · ${g.municipios.length} município(s), ${g.nPac} pacientes</div>` +
-      `<div class="pj-secao-sub" style="margin-top:10px">Mais frequentes que na média</div>${dest}` +
-      expansivel("Municípios do grupo", `<p class="pj-texto">${esc(g.municipios.join(", "))}</p>`) + `</div>`;
-  }).join("") + `</div>`;
-  h += `<div class="pj-legenda" style="margin-top:10px">Como foi feito: municípios com ${N_MIN_MUNICIPIO}+ pacientes conclusivos; prevalência de cada espécie suavizada ` +
-    `(como se cada município tivesse mais 5 pacientes com o perfil geral, para que amostras pequenas não criem perfis extremos), transformada pela raiz quadrada e padronizada; ` +
-    `número de grupos (2 a 5) escolhido pela maior silhueta. "× a média" compara a prevalência no grupo com a do conjunto.</div>`;
+    "Leitura exploratória dos municípios de moradia, sempre com fezes e lâmina separadas. Não muda nenhuma prevalência do relatório. Os pacientes vêm da amostra do levantamento (por exemplo, creches ou escolas), que não representa necessariamente a população do município: use estes gráficos para levantar hipóteses, não para classificar municípios.");
+  h += blocoFunil(r.fezes, "Fezes — municípios em relação à média do levantamento", "Potes", "fezes");
+  h += `<div class="pj-espaco"></div>` + blocoFunil(r.lamina, "Lâmina — municípios em relação à média do levantamento", "Lâminas", "lâmina");
+  h += `<div class="pj-espaco"></div>` + blocoCalor(r.calor);
+  h += `<div class="pj-legenda" style="margin-top:14px">Como ler o funil: cada ponto é um município. A faixa verde-clara mostra até onde a proporção pode variar só por acaso em torno da média, dado o número de pacientes (limites binomiais exatos de 95%); as linhas finas, o limite de 99,8%. Municípios pequenos ficam na boca larga do funil porque têm estimativas menos precisas.</div>`;
   return h + `</div>`;
 }
 
